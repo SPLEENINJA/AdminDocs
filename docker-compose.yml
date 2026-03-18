@@ -160,6 +160,8 @@ services:
       - -c
       - |
         airflow db migrate
+        python3 -c "import json; open('/opt/airflow/simple_auth_manager_passwords.json.generated','w').write(json.dumps({'admin':'admin'}))"
+        echo "=== Airflow init OK — login: admin / admin ==="
     restart: "no"
 
   # ========================== AIRFLOW API SERVER ==========================
