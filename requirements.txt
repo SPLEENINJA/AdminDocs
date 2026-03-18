@@ -1,0 +1,16 @@
+# =============================================================================
+# Requirements Python pour les composants Airflow / pipeline
+# Installation : pip install -r requirements.txt
+# =============================================================================
+
+# --- Accès MinIO (protocole S3) ---
+boto3==1.34.25
+
+# --- Appels HTTP vers les services ---
+requests==2.31.0
+
+# --- Apache Airflow (déjà dans l'image Docker, utile pour dev local) ---
+# apache-airflow==2.8.1
+
+# --- Utilitaires ---
+python-dotenv==1.0.0

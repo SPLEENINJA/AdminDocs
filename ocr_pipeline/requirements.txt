@@ -1,0 +1,27 @@
+# ── OCR & Vision ──────────────────────────────────────────────────────────────
+google-genai>=0.8.0         # nouveau SDK (remplace google-generativeai)
+pymupdf>=1.23.0             # lecture PDF pur Python — PAS besoin de poppler ✅
+img2pdf>=0.4.4              # génération PDF depuis images (pip install img2pdf)
+Pillow>=10.0.0
+# pdf2image>=1.17.0         # optionnel — fallback si pymupdf absent (nécessite poppler)
+
+# ── API ───────────────────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# ── Data & Validation ─────────────────────────────────────────────────────────
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# ── Robustesse ────────────────────────────────────────────────────────────────
+
+# ── Logs & CLI ────────────────────────────────────────────────────────────────
+rich>=13.0.0
+
+# ── Dataset Generator ─────────────────────────────────────────────────────────
+faker>=24.0.0
+
+# ── UI Streamlit ──────────────────────────────────────────────────────────────
+streamlit>=1.35.0
+pandas>=2.0.0

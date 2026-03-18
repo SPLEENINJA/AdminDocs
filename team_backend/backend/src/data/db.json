@@ -1,0 +1,130 @@
+{
+  "documents": [
+    {
+      "id": "78d7d48e-2934-4d24-bdd8-9c25c8a5e1b7",
+      "filename": "avis_echeance-20260311-232059.646_31.pdf",
+      "storedFilename": "1773675605221-avis-echeance-20260311-232059-646-31-563c9135.pdf",
+      "mimetype": "application/pdf",
+      "size": 23921,
+      "status": "validated",
+      "step": "completed",
+      "createdAt": "2026-03-16T15:40:05.230Z",
+      "rawPath": "/raw/1773675605221-avis-echeance-20260311-232059-646-31-563c9135.pdf",
+      "cleanPath": "/clean/78d7d48e-2934-4d24-bdd8-9c25c8a5e1b7.json",
+      "curatedPath": "/curated/78d7d48e-2934-4d24-bdd8-9c25c8a5e1b7.json",
+      "ocrText": "Texte OCR simulé pour avis_echeance-20260311-232059.646_31.pdf. Ce texte sera remplacé par le moteur OCR réel (Tesseract/EasyOCR).",
+      "documentType": "document_inconnu",
+      "extractedData": {
+        "supplierName": "Avis Echeance",
+        "siret": "29785245594426",
+        "vat": "FR70253355702",
+        "invoiceDate": "2026-03-13",
+        "expiryDate": "2026-04-15",
+        "amountHt": 3524.72,
+        "amountTtc": 4229.66,
+        "iban": "FR76 4084 0142 2770 4048 6252 156",
+        "address": "7 Rue de la République, Paris",
+        "status": "pending"
+      },
+      "validation": {
+        "status": "validated",
+        "score": 96,
+        "anomalies": [],
+        "checks": [
+          {
+            "name": "OCR terminé",
+            "status": "passed"
+          },
+          {
+            "name": "Extraction des champs",
+            "status": "passed"
+          },
+          {
+            "name": "Cohérence documentaire",
+            "status": "passed"
+          }
+        ]
+      },
+      "supplierId": "32d7a201-65f1-40a2-823c-a3977537977d",
+      "previewUrl": "/uploads/1773675605221-avis-echeance-20260311-232059-646-31-563c9135.pdf"
+    },
+    {
+      "id": "c3248756-effb-434c-9a5f-2f9f6bb62198",
+      "filename": "devis.png",
+      "storedFilename": "1773674672712-devis-46ceb10a.png",
+      "mimetype": "image/png",
+      "size": 32869,
+      "status": "validated",
+      "step": "completed",
+      "createdAt": "2026-03-16T15:24:32.719Z",
+      "rawPath": "/raw/1773674672712-devis-46ceb10a.png",
+      "cleanPath": "/clean/c3248756-effb-434c-9a5f-2f9f6bb62198.json",
+      "curatedPath": "/curated/c3248756-effb-434c-9a5f-2f9f6bb62198.json",
+      "ocrText": "Texte OCR simulé pour devis.png. Ce texte sera remplacé par le moteur OCR réel (Tesseract/EasyOCR).",
+      "documentType": "devis",
+      "extractedData": {
+        "supplierName": "Devis",
+        "siret": "82720801937422",
+        "vat": "FR75853441145",
+        "invoiceDate": "2026-03-13",
+        "expiryDate": "2026-04-15",
+        "amountHt": 1248.06,
+        "amountTtc": 1497.67,
+        "iban": "FR76 5513 4021 3033 4751 9335 866",
+        "address": "29 Rue de la République, Paris",
+        "status": "pending",
+        "quoteNumber": "DEV-230515",
+        "validUntil": "2026-04-05"
+      },
+      "validation": {
+        "status": "validated",
+        "score": 96,
+        "anomalies": [],
+        "checks": [
+          {
+            "name": "OCR terminé",
+            "status": "passed"
+          },
+          {
+            "name": "Extraction des champs",
+            "status": "passed"
+          },
+          {
+            "name": "Cohérence documentaire",
+            "status": "passed"
+          }
+        ]
+      },
+      "supplierId": "a8d9c59e-8ce6-48bf-ae0b-4583e679fbd9",
+      "previewUrl": "/uploads/1773674672712-devis-46ceb10a.png"
+    }
+  ],
+  "suppliers": [
+    {
+      "id": "32d7a201-65f1-40a2-823c-a3977537977d",
+      "supplierName": "Avis Echeance",
+      "siret": "29785245594426",
+      "vat": "FR70253355702",
+      "iban": "FR76 4084 0142 2770 4048 6252 156",
+      "address": "7 Rue de la République, Paris",
+      "status": "verified",
+      "documentIds": [
+        "78d7d48e-2934-4d24-bdd8-9c25c8a5e1b7"
+      ],
+      "createdAt": "2026-03-16T15:40:06.458Z"
+    },
+    {
+      "id": "a8d9c59e-8ce6-48bf-ae0b-4583e679fbd9",
+      "supplierName": "Devis",
+      "siret": "82720801937422",
+      "vat": "FR75853441145",
+      "iban": "FR76 5513 4021 3033 4751 9335 866",
+      "address": "29 Rue de la République, Paris",
+      "status": "verified",
+      "documentIds": [
+        "c3248756-effb-434c-9a5f-2f9f6bb62198"
+      ],
+      "createdAt": "2026-03-16T15:24:33.965Z"
+    }
+  ]
+}
