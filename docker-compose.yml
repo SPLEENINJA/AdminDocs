@@ -46,6 +46,7 @@ x-airflow-common: &airflow-common
     BUSINESS_SERVICE_URL: http://business-service:8003
     BACKEND_URL: http://team-backend:4000
   volumes:
+    - airflow_home:/opt/airflow
     - ./dags:/opt/airflow/dags
     - ./plugins:/opt/airflow/plugins
     - ./logs:/opt/airflow/logs
@@ -320,4 +321,5 @@ volumes:
   backend_data:
   ocr_storage:
   ocr_logs:
+  airflow_home:
 
