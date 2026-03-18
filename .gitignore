@@ -1,5 +1,7 @@
 # Ignorer les fichiers générés
 .env
+.env.example
+
 logs/
 __pycache__/
 *.pyc
