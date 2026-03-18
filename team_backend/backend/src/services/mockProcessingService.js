@@ -61,8 +61,8 @@ function generateFields(type, filename) {
     amountHt,
     amountTtc,
     iban,
-    address: `${Math.floor(Math.random() * 99) + 1} Rue de la République, Paris`,
-    status: 'pending'
+    adresseEmetteur: `${Math.floor(Math.random() * 99) + 1} Rue de la République, 75001 Paris`,
+    adresseDestinataire: null,
   };
 
   switch (type) {
@@ -165,7 +165,8 @@ function mapOcrResult(ocr, document) {
   const extractedData = {
     supplierName: champs.raison_sociale || champs.emetteur || null,
     siret: champs.siret || null,
-    vat: champs.tva_taux || null,
+    vat: champs.tva_numero || null,
+    vatRate: champs.tva_taux != null ? champs.tva_taux : null,
     invoiceDate: champs.date_emission || null,
     expiryDate: champs.date_expiration || null,
     amountHt: champs.montant_ht ?? null,

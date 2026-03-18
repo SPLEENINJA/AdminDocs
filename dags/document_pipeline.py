@@ -1,27 +1,3 @@
-# =============================================================================
-# DAG Airflow – Pipeline de traitement de documents administratifs
-# Hackathon 2026 – Adapté aux vrais services du groupe (AdminDocs)
-#
-# Flux complet :
-#   1. Détecter les nouveaux documents dans MinIO bucket "raw"
-#   2. Appeler le service OCR du groupe (FastAPI + Gemini Vision, port 8000)
-#   3. Stocker le résultat OCR dans MinIO bucket "clean"
-#   4. Appeler le service Anomaly Detector (mock, port 8002)
-#   5. Stocker le résultat enrichi dans MinIO bucket "curated"
-#   6. Envoyer les données vers le backend du groupe (port 4000) :
-#      - Mise à jour statut document
-#      - Auto-remplissage CRM / fournisseur
-#      - Vérification conformité
-#
-# Services du groupe :
-#   - team-backend (Express)  : POST /api/upload, GET /api/documents,
-#                                GET /api/crm/suppliers/:id, GET /api/compliance/:id
-#   - ocr-service (FastAPI)   : POST /documents/upload, GET /documents,
-#                                POST /documents/cross-validate, GET /health
-#   - anomaly-service (mock)  : POST /analyze, GET /health
-#   - business-service (mock) : POST /crm/submit, POST /conformite/check
-# =============================================================================
-
 import os
 import sys
 import json
@@ -70,9 +46,7 @@ BUCKET_CURATED = os.getenv("MINIO_BUCKET_CURATED", "curated")
 logger = get_logger("document_pipeline")
 
 
-# =============================================================================
-# ÉTAPE 0 : Vérifier la santé des services
-# =============================================================================
+
 def check_services(**context):
     """
     Vérifie que tous les services sont en ligne avant de lancer le pipeline.
@@ -96,9 +70,9 @@ def check_services(**context):
     log_step(logger, "HEALTH_CHECK", "SUCCESS", "Tous les services sont en ligne.")
 
 
-# =============================================================================
-# ÉTAPE 1 : Détecter les documents dans le bucket "raw"
-# =============================================================================
+
+#  Détecter les documents dans le bucket "raw"
+
 def detect_documents(**context):
     """
     Scanne le bucket 'raw' de MinIO pour trouver les documents à traiter.
@@ -125,9 +99,9 @@ def detect_documents(**context):
     return documents
 
 
-# =============================================================================
+
 # BRANCHEMENT : Documents trouvés ou non ?
-# =============================================================================
+
 def branch_on_documents(**context):
     """
     Branche le pipeline en fonction de la présence de documents.
@@ -144,9 +118,8 @@ def branch_on_documents(**context):
         return "process_documents"
 
 
-# =============================================================================
-# ÉTAPE 2 : Traitement OCR de tous les documents
-# =============================================================================
+# Traitement OCR de tous les documents
+
 def process_ocr(**context):
     """
     Pour chaque document détecté dans 'raw' :
@@ -191,9 +164,7 @@ def process_ocr(**context):
     return ocr_results
 
 
-# =============================================================================
-# ÉTAPE 3 : Analyse d'anomalies
-# =============================================================================
+#  Analyse d'anomalies
 def process_anomaly_detection(**context):
     """
     Pour chaque résultat OCR :
@@ -281,9 +252,9 @@ def process_anomaly_detection(**context):
     return analysis_results
 
 
-# =============================================================================
-# ÉTAPE 4 : Stocker le résultat enrichi dans le bucket "curated"
-# =============================================================================
+
+#  Stocker le résultat  dans le bucket "curated"
+
 def store_curated(**context):
     """
     Stocke le résultat final (OCR + anomalies) dans le bucket 'curated'.
@@ -355,9 +326,8 @@ def store_curated(**context):
     return curated_keys
 
 
-# =============================================================================
-# ÉTAPE 5a : Envoi vers le CRM (auto-remplissage)
-# =============================================================================
+ # Envoi vers le CRM 
+
 def send_to_crm(**context):
     """
     Envoie les données extraites au CRM pour auto-remplissage de fiche client.
@@ -392,9 +362,7 @@ def send_to_crm(**context):
     return crm_responses
 
 
-# =============================================================================
-# ÉTAPE 5b : Envoi vers la Conformité (vérification réglementaire)
-# =============================================================================
+#  Envoi vers la Conformité 
 def send_to_conformite(**context):
     """
     Envoie les données au module Conformité pour vérification réglementaire.
@@ -434,9 +402,7 @@ def send_to_conformite(**context):
     return conformite_responses
 
 
-# =============================================================================
-# ÉTAPE 5c : Notifier le backend du groupe
-# =============================================================================
+# Notifier le backend du groupe
 def notify_backend(**context):
     """
     Notifie le backend Express du groupe que le pipeline est terminé
@@ -454,9 +420,7 @@ def notify_backend(**context):
             log_step(logger, "BACKEND_NOTIFY", "ERROR", f"{doc_key} : {str(e)}")
 
 
-# =============================================================================
-# ÉTAPE 6 : Résumé / Log final du pipeline
-# =============================================================================
+# Résumé / Log final du pipeline
 def pipeline_summary(**context):
     """
     Produit un résumé du pipeline complet pour chaque document traité.
@@ -485,99 +449,3 @@ def pipeline_summary(**context):
         log_pipeline_end(logger, doc_key, success=(doc_key in curated_keys))
 
     logger.info("=" * 70)
-
-
-# =============================================================================
-# DÉFINITION DU DAG
-# =============================================================================
-with DAG(
-    dag_id="document_processing_pipeline",
-    default_args=default_args,
-    description="Pipeline de traitement de documents administratifs – Hackathon 2026",
-    schedule_interval=timedelta(minutes=5),    # Scan toutes les 5 minutes
-    start_date=datetime(2026, 3, 15),
-    catchup=False,
-    max_active_runs=1,
-    tags=["hackathon", "documents", "pipeline", "admindocs"],
-) as dag:
-
-    # ---  Vérification des services ---
-    t_check_services = PythonOperator(
-        task_id="check_services",
-        python_callable=check_services,
-    )
-
-    # ---  Détecter les documents dans raw ---
-    t_detect = PythonOperator(
-        task_id="detect_documents",
-        python_callable=detect_documents,
-    )
-
-    # --- Branchement : documents trouvés ? ---
-    t_branch = BranchPythonOperator(
-        task_id="branch_on_documents",
-        python_callable=branch_on_documents,
-    )
-
-    # --- Tâche vide : aucun document ---
-    t_no_docs = EmptyOperator(
-        task_id="no_documents",
-    )
-
-    # --- Tâche intermédiaire pour le branchement ---
-    t_process = EmptyOperator(
-        task_id="process_documents",
-    )
-
-    # ---  OCR ---
-    t_ocr = PythonOperator(
-        task_id="process_ocr",
-        python_callable=process_ocr,
-    )
-
-    # ---  Anomaly Detection ---
-    t_anomaly = PythonOperator(
-        task_id="process_anomaly_detection",
-        python_callable=process_anomaly_detection,
-    )
-
-    # ---  Stocker en curated ---
-    t_curated = PythonOperator(
-        task_id="store_curated",
-        python_callable=store_curated,
-    )
-
-    # ---  Envoi CRM ---
-    t_crm = PythonOperator(
-        task_id="send_to_crm",
-        python_callable=send_to_crm,
-    )
-
-    # ---  Envoi Conformité ---
-    t_conformite = PythonOperator(
-        task_id="send_to_conformite",
-        python_callable=send_to_conformite,
-    )
-
-    # ---  Notifier le backend du groupe ---
-    t_notify = PythonOperator(
-        task_id="notify_backend",
-        python_callable=notify_backend,
-    )
-
-   
-    t_summary = PythonOperator(
-        task_id="pipeline_summary",
-        python_callable=pipeline_summary,
-        trigger_rule="none_failed_min_one_success",  # s'exécute même si branche skip
-    )
-
-   
-
-    t_check_services >> t_detect >> t_branch
-
-    t_branch >> t_no_docs >> t_summary
-
-    t_branch >> t_process >> t_ocr >> t_anomaly >> t_curated
-
-    t_curated >> [t_crm, t_conformite, t_notify] >> t_summary

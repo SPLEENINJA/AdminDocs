@@ -64,6 +64,8 @@ RÈGLES CRITIQUES :
 7. DÉTECTION DOCUMENT ÉTRANGER : Si le document est émis par une entreprise étrangère (UK, US, etc.), sans SIRET ni adresse française, utilise type_document = "facture_etrangere".
 8. NE JAMAIS INVENTER : Si un champ (siret, iban, tva, montant...) n'est PAS EXPLICITEMENT écrit dans le document, retourne null. INTERDIT d'inventer ou déduire des valeurs absentes.
 9. COHÉRENCE MONTANTS : Ne retourne que les montants réellement écrits dans le document. Ne calcule rien.
+10. TVA — DEUX CHAMPS DISTINCTS : tva_taux = le TAUX en % (ex: 20.0 pour 20%) ; tva_numero = le numéro intracommunautaire FR (ex: "FR70253355702"). Ne jamais mettre un numéro FR dans tva_taux ni un taux dans tva_numero.
+11. ACOMPTE ≠ TVA : Les lignes "Facture d'acompte" ou "Acompte" sont des DÉDUCTIONS déjà versées, pas des montants TVA. Mettre leur valeur absolue (positive) dans montant_acompte. Ne jamais mettre un montant d'acompte dans tva_taux ou montant_ttc.
 
 STRUCTURE EXACTE (respecter l'ordre des clés) :
 {{
@@ -77,7 +79,9 @@ STRUCTURE EXACTE (respecter l'ordre des clés) :
     "date_expiration": null,
     "montant_ht": null,
     "montant_ttc": null,
+    "montant_acompte": null,
     "tva_taux": null,
+    "tva_numero": null,
     "numero_document": null,
     "iban": null,
     "bic": null,

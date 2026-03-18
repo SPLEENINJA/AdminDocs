@@ -31,9 +31,6 @@ from datetime import datetime
 
 app = FastAPI(title="Anomaly Detector Service — AdminDocs", version="2.0.0")
 
-# =============================================================================
-# Constantes
-# =============================================================================
 
 RISK_WEIGHTS: Dict[str, int] = {"high": 35, "medium": 20, "low": 10}
 MAX_RISK = 100
@@ -55,9 +52,7 @@ REQUIRED_FIELDS: Dict[str, List[str]] = {
 ATTESTATION_TYPES = {"attestation", "attestation_urssaf", "attestation_fiscale", "kbis"}
 
 
-# =============================================================================
 # Modèles
-# =============================================================================
 
 class AnomalyRequest(BaseModel):
     """Requête d'analyse d'un seul document."""
@@ -72,9 +67,7 @@ class CrossDocRequest(BaseModel):
     documents: List[Dict[str, Any]]     # liste de {document_key, fields, document_type}
 
 
-# =============================================================================
 # Utilitaires de validation
-# =============================================================================
 
 def _clean_digits(value: Any) -> str:
     """Supprime tous les caractères non-numériques."""
@@ -136,9 +129,7 @@ def compute_risk_score(anomalies: List[Dict]) -> int:
     return min(total, MAX_RISK)
 
 
-# =============================================================================
 # Moteur d'analyse — toutes les règles sur un document
-# =============================================================================
 
 def _run_rules(
     document_key: str,
@@ -321,9 +312,7 @@ def _run_rules(
     return anomalies
 
 
-# =============================================================================
 # Endpoints
-# =============================================================================
 
 @app.get("/health")
 def health():

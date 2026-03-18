@@ -17,7 +17,9 @@ class DocumentChamps(BaseModel):
     date_expiration:  Optional[str]  = None
     montant_ht:       Optional[float] = None
     montant_ttc:      Optional[float] = None
-    tva_taux:         Optional[str]  = None   # ex: "20%"
+    montant_acompte:  Optional[float] = None   # montant d'acompte déjà versé (valeur positive)
+    tva_taux:         Optional[float] = None   # taux en % ex: 20.0
+    tva_numero:       Optional[str]  = None   # numéro intracomm ex: "FR70253355702"
     numero_document:  Optional[str]  = None
     iban:             Optional[str]  = None
     bic:              Optional[str]  = None

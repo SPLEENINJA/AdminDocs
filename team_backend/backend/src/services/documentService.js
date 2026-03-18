@@ -2,6 +2,16 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { readDb, writeDb } from './db.js';
 import { processDocument } from './mockProcessingService.js';
+import { uploadToRaw, uploadJsonToClean } from './minioService.js';
+
+// File d'attente globale : les documents uploadés ensemble sont traités 1 par 1
+let pipelineQueue = Promise.resolve();
+
+function enqueuePipeline(documentId) {
+  pipelineQueue = pipelineQueue
+    .then(() => runPipeline(documentId))
+    .catch((err) => console.error(`[pipeline] Erreur doc ${documentId}:`, err));
+}
 
 export async function createUploadedDocuments(files) {
   const db = await readDb();
@@ -29,22 +39,35 @@ export async function createUploadedDocuments(files) {
   db.documents.unshift(...createdDocs);
   await writeDb(db);
 
-  createdDocs.forEach((doc) => runPipeline(doc.id));
+  // Enfile chaque document dans la queue — traitement séquentiel garanti
+  for (const doc of createdDocs) {
+    enqueuePipeline(doc.id);
+  }
 
   return createdDocs;
 }
 
 export async function runPipeline(documentId) {
+  console.log(`[pipeline] Début traitement : ${documentId}`);
+
   let db = await readDb();
   const document = db.documents.find((item) => item.id === documentId);
   if (!document) return;
 
+  // 1. Upload vers MinIO raw (awaité pour garantir l'ordre)
+  const uploadDir = path.resolve('src/uploads');
+  const filePath = path.join(uploadDir, document.storedFilename);
+  await uploadToRaw(document.storedFilename, filePath, document.mimetype);
+
+  // 2. Marquer en cours
   document.status = 'processing';
   document.step = 'ocr';
   await writeDb(db);
 
+  // 3. OCR
   const result = await processDocument(document);
 
+  // 4. Relire la DB fraîche avant d'écrire (évite les conflits résiduels)
   db = await readDb();
   const currentDoc = db.documents.find((item) => item.id === documentId);
   if (!currentDoc) return;
@@ -60,10 +83,23 @@ export async function runPipeline(documentId) {
 
   const supplierId = upsertSupplierFromDocument(db, currentDoc);
   currentDoc.supplierId = supplierId;
-
   currentDoc.status = 'validated';
   currentDoc.step = 'completed';
   await writeDb(db);
+
+  // 5. Upload résultat OCR vers MinIO clean (awaité)
+  await uploadJsonToClean(documentId, {
+    documentId,
+    filename: document.filename,
+    storedFilename: document.storedFilename,
+    documentType: result.documentType,
+    extractedData: result.extractedData,
+    validation: result.validation,
+    ocrText: result.ocrText,
+    processedAt: new Date().toISOString(),
+  });
+
+  console.log(`[pipeline] Terminé : ${documentId}`);
 }
 
 function upsertSupplierFromDocument(db, document) {

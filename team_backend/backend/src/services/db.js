@@ -8,6 +8,9 @@ const initialDb = {
   suppliers: []
 };
 
+// Mutex simple pour éviter les écritures concurrentes
+let writeLock = Promise.resolve();
+
 async function ensureDb() {
   try {
     await fs.access(dataFile);
@@ -25,5 +28,8 @@ export async function readDb() {
 
 export async function writeDb(data) {
   await ensureDb();
-  await fs.writeFile(dataFile, JSON.stringify(data, null, 2), 'utf-8');
+  writeLock = writeLock.then(() =>
+    fs.writeFile(dataFile, JSON.stringify(data, null, 2), 'utf-8')
+  );
+  return writeLock;
 }

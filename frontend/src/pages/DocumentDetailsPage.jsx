@@ -47,11 +47,12 @@ export default function DocumentDetailsPage() {
 
         <Card title="Champs extraits">
           <div className="space-y-3">
-            {Object.entries(document.extractedData || {}).map(([key, value]) => {
+            {Object.entries(document.extractedData || {}).filter(([key]) => key !== 'status' && key !== 'montantAcompte').map(([key, value]) => {
               const labels = {
                 supplierName: 'Fournisseur',
                 siret: 'SIRET',
-                vat: 'TVA',
+                vat: 'N° TVA',
+                vatRate: 'Taux de TVA',
                 invoiceDate: "Date d'émission",
                 expiryDate: "Date d'expiration",
                 amountHt: 'Montant HT',
