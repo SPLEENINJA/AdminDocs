@@ -1,3 +1,27 @@
+﻿# =============================================================================
+# DAG Airflow ÔÇô Pipeline de traitement de documents administratifs
+# Hackathon 2026 ÔÇô Adapt├® aux vrais services du groupe (AdminDocs)
+#
+# Flux complet :
+#   1. D├®tecter les nouveaux documents dans MinIO bucket "raw"
+#   2. Appeler le service OCR du groupe (FastAPI + Gemini Vision, port 8000)
+#   3. Stocker le r├®sultat OCR dans MinIO bucket "clean"
+#   4. Appeler le service Anomaly Detector (mock, port 8002)
+#   5. Stocker le r├®sultat enrichi dans MinIO bucket "curated"
+#   6. Envoyer les donn├®es vers le backend du groupe (port 4000) :
+#      - Mise ├á jour statut document
+#      - Auto-remplissage CRM / fournisseur
+#      - V├®rification conformit├®
+#
+# Services du groupe :
+#   - team-backend (Express)  : POST /api/upload, GET /api/documents,
+#                                GET /api/crm/suppliers/:id, GET /api/compliance/:id
+#   - ocr-service (FastAPI)   : POST /documents/upload, GET /documents,
+#                                POST /documents/cross-validate, GET /health
+#   - anomaly-service (mock)  : POST /analyze, GET /health
+#   - business-service (mock) : POST /crm/submit, POST /conformite/check
+# =============================================================================
+
 import os
 import sys
 import json
@@ -38,7 +62,7 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
 }
 
-# Variables d'environnement (injectées par Docker Compose)
+# Variables d'environnement (inject├®es par Docker Compose)
 BUCKET_RAW = os.getenv("MINIO_BUCKET_RAW", "raw")
 BUCKET_CLEAN = os.getenv("MINIO_BUCKET_CLEAN", "clean")
 BUCKET_CURATED = os.getenv("MINIO_BUCKET_CURATED", "curated")
@@ -46,13 +70,15 @@ BUCKET_CURATED = os.getenv("MINIO_BUCKET_CURATED", "curated")
 logger = get_logger("document_pipeline")
 
 
-
+# =============================================================================
+# ├ëTAPE 0 : V├®rifier la sant├® des services
+# =============================================================================
 def check_services(**context):
     """
-    Vérifie que tous les services sont en ligne avant de lancer le pipeline.
-    Services vérifiés : OCR (groupe), Anomaly (mock), Business (mock), Backend (groupe).
+    V├®rifie que tous les services sont en ligne avant de lancer le pipeline.
+    Services v├®rifi├®s : OCR (groupe), Anomaly (mock), Business (mock), Backend (groupe).
     """
-    log_step(logger, "HEALTH_CHECK", "START", "Vérification des services...")
+    log_step(logger, "HEALTH_CHECK", "START", "V├®rification des services...")
 
     services = ["ocr", "anomaly", "business", "backend"]
     all_ok = True
@@ -70,13 +96,13 @@ def check_services(**context):
     log_step(logger, "HEALTH_CHECK", "SUCCESS", "Tous les services sont en ligne.")
 
 
-
-#  Détecter les documents dans le bucket "raw"
-
+# =============================================================================
+# ├ëTAPE 1 : D├®tecter les documents dans le bucket "raw"
+# =============================================================================
 def detect_documents(**context):
     """
-    Scanne le bucket 'raw' de MinIO pour trouver les documents à traiter.
-    Pousse la liste des clés de documents via XCom pour les étapes suivantes.
+    Scanne le bucket 'raw' de MinIO pour trouver les documents ├á traiter.
+    Pousse la liste des cl├®s de documents via XCom pour les ├®tapes suivantes.
     """
     log_step(logger, "DETECT_DOCUMENTS", "START", f"Scan du bucket '{BUCKET_RAW}'...")
 
@@ -84,49 +110,50 @@ def detect_documents(**context):
     documents = list_objects(BUCKET_RAW)
 
     if not documents:
-        log_step(logger, "DETECT_DOCUMENTS", "SKIP", "Aucun document trouvé dans 'raw'.")
-        # On pousse une liste vide, le branchement décidera
+        log_step(logger, "DETECT_DOCUMENTS", "SKIP", "Aucun document trouv├® dans 'raw'.")
+        # On pousse une liste vide, le branchement d├®cidera
         context["ti"].xcom_push(key="documents", value=[])
         return []
 
     log_step(
         logger, "DETECT_DOCUMENTS", "SUCCESS",
-        f"{len(documents)} document(s) trouvé(s) : {documents}"
+        f"{len(documents)} document(s) trouv├®(s) : {documents}"
     )
 
-    # Stocker la liste dans XCom pour les tâches suivantes
+    # Stocker la liste dans XCom pour les t├óches suivantes
     context["ti"].xcom_push(key="documents", value=documents)
     return documents
 
 
-
-# BRANCHEMENT : Documents trouvés ou non ?
-
+# =============================================================================
+# BRANCHEMENT : Documents trouv├®s ou non ?
+# =============================================================================
 def branch_on_documents(**context):
     """
-    Branche le pipeline en fonction de la présence de documents.
-    Si aucun document → skip vers la fin.
-    Si documents → continuer le traitement.
+    Branche le pipeline en fonction de la pr├®sence de documents.
+    Si aucun document ÔåÆ skip vers la fin.
+    Si documents ÔåÆ continuer le traitement.
     """
     documents = context["ti"].xcom_pull(task_ids="detect_documents", key="documents")
 
     if not documents:
-        logger.info("Aucun document à traiter → skip.")
+        logger.info("Aucun document ├á traiter ÔåÆ skip.")
         return "no_documents"
     else:
-        logger.info(f"{len(documents)} document(s) à traiter → processing.")
+        logger.info(f"{len(documents)} document(s) ├á traiter ÔåÆ processing.")
         return "process_documents"
 
 
-# Traitement OCR de tous les documents
-
+# =============================================================================
+# ├ëTAPE 2 : Traitement OCR de tous les documents
+# =============================================================================
 def process_ocr(**context):
     """
-    Pour chaque document détecté dans 'raw' :
+    Pour chaque document d├®tect├® dans 'raw' :
       1. Appelle le service OCR
-      2. Stocke le résultat JSON dans le bucket 'clean'
+      2. Stocke le r├®sultat JSON dans le bucket 'clean'
     
-    Les résultats sont poussés via XCom pour l'étape suivante.
+    Les r├®sultats sont pouss├®s via XCom pour l'├®tape suivante.
     """
     documents = context["ti"].xcom_pull(task_ids="detect_documents", key="documents")
     ocr_results = {}
@@ -139,10 +166,10 @@ def process_ocr(**context):
             # Appel au service OCR du groupe (FastAPI + Gemini Vision)
             ocr_result = call_ocr_service(doc_key, BUCKET_RAW)
 
-            # Construire la clé de destination dans 'clean'
+            # Construire la cl├® de destination dans 'clean'
             clean_key = doc_key.rsplit(".", 1)[0] + "_ocr.json"
 
-            # Stocker le résultat OCR dans le bucket 'clean'
+            # Stocker le r├®sultat OCR dans le bucket 'clean'
             upload_json(BUCKET_CLEAN, clean_key, ocr_result)
 
             ocr_results[doc_key] = {
@@ -152,37 +179,39 @@ def process_ocr(**context):
 
             # Le service OCR du groupe retourne type_document / confiance
             log_step(logger, "OCR", "SUCCESS",
-                     f"{doc_key} → {clean_key} "
+                     f"{doc_key} ÔåÆ {clean_key} "
                      f"(type: {ocr_result.get('type_document', ocr_result.get('documentType', 'N/A'))})")
 
         except Exception as e:
             log_step(logger, "OCR", "ERROR", f"{doc_key} : {str(e)}")
             ocr_results[doc_key] = {"error": str(e)}
 
-    # Pousser tous les résultats via XCom
+    # Pousser tous les r├®sultats via XCom
     context["ti"].xcom_push(key="ocr_results", value=ocr_results)
     return ocr_results
 
 
-#  Analyse d'anomalies
+# =============================================================================
+# ├ëTAPE 3 : Analyse d'anomalies
+# =============================================================================
 def process_anomaly_detection(**context):
     """
-    Pour chaque résultat OCR :
-      1. Appelle le service Anomaly Detector (règles mono-document)
-      2. Appelle /analyze-cross pour la cohérence inter-documents
-      3. Enrichit les résultats avec l'analyse combinée
+    Pour chaque r├®sultat OCR :
+      1. Appelle le service Anomaly Detector (r├¿gles mono-document)
+      2. Appelle /analyze-cross pour la coh├®rence inter-documents
+      3. Enrichit les r├®sultats avec l'analyse combin├®e
 
-    Les résultats sont poussés via XCom pour l'étape de stockage curated.
+    Les r├®sultats sont pouss├®s via XCom pour l'├®tape de stockage curated.
     """
     ocr_results = context["ti"].xcom_pull(task_ids="process_ocr", key="ocr_results")
     analysis_results = {}
-    # Liste pour l'analyse croisée inter-documents
+    # Liste pour l'analyse crois├®e inter-documents
     cross_doc_inputs = []
 
     for doc_key, ocr_data in ocr_results.items():
         # Ignorer les documents en erreur
         if "error" in ocr_data:
-            log_step(logger, "ANOMALY", "SKIP", f"{doc_key} : erreur OCR précédente")
+            log_step(logger, "ANOMALY", "SKIP", f"{doc_key} : erreur OCR pr├®c├®dente")
             analysis_results[doc_key] = ocr_data
             continue
 
@@ -191,17 +220,17 @@ def process_anomaly_detection(**context):
         try:
             ocr_result = ocr_data["ocr_result"]
 
-            # Adapter le format — le service OCR retourne "champs" ou "fields"
+            # Adapter le format ÔÇö le service OCR retourne "champs" ou "fields"
             fields = ocr_result.get("champs", ocr_result.get("extractedData",
                       ocr_result.get("fields", {})))
             confidence = ocr_result.get("confiance", ocr_result.get("confidence", 0.9))
             doc_type = ocr_result.get("type_document", ocr_result.get("documentType", "inconnu"))
-            qualite_scan = ocr_result.get("qualite_scan", "")  # qualité image via Gemini
+            qualite_scan = ocr_result.get("qualite_scan", "")  # qualit├® image via Gemini
 
             anomaly_input = {
                 "confidence": confidence,
                 "fields": fields,
-                "qualite_scan": qualite_scan,  # transmis à l'anomaly detector v2
+                "qualite_scan": qualite_scan,  # transmis ├á l'anomaly detector v2
             }
             analysis = call_anomaly_service(doc_key, anomaly_input, doc_type)
 
@@ -213,7 +242,7 @@ def process_anomaly_detection(**context):
                 "document_type": doc_type,
             }
 
-            # Préparer pour l'analyse croisée
+            # Pr├®parer pour l'analyse crois├®e
             cross_doc_inputs.append({
                 "document_key": doc_key,
                 "fields": fields,
@@ -222,7 +251,7 @@ def process_anomaly_detection(**context):
 
             log_step(
                 logger, "ANOMALY", "SUCCESS",
-                f"{doc_key} – valide: {analysis.get('is_valid')}, "
+                f"{doc_key} ÔÇô valide: {analysis.get('is_valid')}, "
                 f"score: {analysis.get('risk_score', 0)}/100, "
                 f"anomalies: {analysis.get('anomaly_count', 0)}"
             )
@@ -231,33 +260,33 @@ def process_anomaly_detection(**context):
             log_step(logger, "ANOMALY", "ERROR", f"{doc_key} : {str(e)}")
             analysis_results[doc_key] = {**ocr_data, "error_anomaly": str(e)}
 
-    # ── Analyse croisée : cohérence inter-documents ───────────────────────────
+    # ÔöÇÔöÇ Analyse crois├®e : coh├®rence inter-documents ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
     cross_result = {"is_coherent": True, "cross_anomalies": [], "risk_score": 0}
     if len(cross_doc_inputs) > 1:
         log_step(logger, "ANOMALY_CROSS", "START",
-                 f"Vérification cohérence sur {len(cross_doc_inputs)} documents…")
+                 f"V├®rification coh├®rence sur {len(cross_doc_inputs)} documentsÔÇª")
         cross_result = call_anomaly_cross_service(cross_doc_inputs)
         log_step(
             logger, "ANOMALY_CROSS",
             "SUCCESS" if cross_result.get("is_coherent") else "WARN",
-            f"Cohérent: {cross_result.get('is_coherent')}, "
+            f"Coh├®rent: {cross_result.get('is_coherent')}, "
             f"anomalies: {cross_result.get('cross_anomaly_count', 0)}, "
             f"score: {cross_result.get('risk_score', 0)}/100"
         )
 
-    # Stocker le résultat croisé au niveau du lot
+    # Stocker le r├®sultat crois├® au niveau du lot
     analysis_results["__cross__"] = cross_result
 
     context["ti"].xcom_push(key="analysis_results", value=analysis_results)
     return analysis_results
 
 
-
-#  Stocker le résultat  dans le bucket "curated"
-
+# =============================================================================
+# ├ëTAPE 4 : Stocker le r├®sultat enrichi dans le bucket "curated"
+# =============================================================================
 def store_curated(**context):
     """
-    Stocke le résultat final (OCR + anomalies) dans le bucket 'curated'.
+    Stocke le r├®sultat final (OCR + anomalies) dans le bucket 'curated'.
     Chaque document a son propre fichier JSON final.
     """
     analysis_results = context["ti"].xcom_pull(
@@ -265,12 +294,12 @@ def store_curated(**context):
     )
     curated_keys = {}
 
-    # Extraire le résultat croisé (clé réservée __cross__)
+    # Extraire le r├®sultat crois├® (cl├® r├®serv├®e __cross__)
     cross_result = analysis_results.pop("__cross__", {})
 
     for doc_key, data in analysis_results.items():
         if "error" in data or "error_anomaly" in data:
-            log_step(logger, "CURATED", "SKIP", f"{doc_key} : erreur précédente")
+            log_step(logger, "CURATED", "SKIP", f"{doc_key} : erreur pr├®c├®dente")
             continue
 
         log_step(logger, "CURATED", "START", f"Stockage curated pour : {doc_key}")
@@ -311,13 +340,13 @@ def store_curated(**context):
                     else "REQUIRES_REVIEW",
             }
 
-            # Clé curated : ex "doc_001_curated.json"
+            # Cl├® curated : ex "doc_001_curated.json"
             curated_key = doc_key.rsplit(".", 1)[0] + "_curated.json"
             upload_json(BUCKET_CURATED, curated_key, curated_doc)
 
             curated_keys[doc_key] = curated_key
 
-            log_step(logger, "CURATED", "SUCCESS", f"{doc_key} → {curated_key}")
+            log_step(logger, "CURATED", "SUCCESS", f"{doc_key} ÔåÆ {curated_key}")
 
         except Exception as e:
             log_step(logger, "CURATED", "ERROR", f"{doc_key} : {str(e)}")
@@ -326,11 +355,12 @@ def store_curated(**context):
     return curated_keys
 
 
- # Envoi vers le CRM 
-
+# =============================================================================
+# ├ëTAPE 5a : Envoi vers le CRM (auto-remplissage)
+# =============================================================================
 def send_to_crm(**context):
     """
-    Envoie les données extraites au CRM pour auto-remplissage de fiche client.
+    Envoie les donn├®es extraites au CRM pour auto-remplissage de fiche client.
     """
     analysis_results = context["ti"].xcom_pull(
         task_ids="process_anomaly_detection", key="analysis_results"
@@ -339,7 +369,7 @@ def send_to_crm(**context):
 
     for doc_key, data in analysis_results.items():
         if "error" in data or "error_anomaly" in data:
-            log_step(logger, "CRM", "SKIP", f"{doc_key} : erreur précédente")
+            log_step(logger, "CRM", "SKIP", f"{doc_key} : erreur pr├®c├®dente")
             continue
 
         log_step(logger, "CRM", "START", f"Envoi vers CRM pour : {doc_key}")
@@ -353,7 +383,7 @@ def send_to_crm(**context):
             crm_responses[doc_key] = crm_response
 
             log_step(logger, "CRM", "SUCCESS",
-                     f"{doc_key} – CRM ID: {crm_response.get('crm_id')}")
+                     f"{doc_key} ÔÇô CRM ID: {crm_response.get('crm_id')}")
 
         except Exception as e:
             log_step(logger, "CRM", "ERROR", f"{doc_key} : {str(e)}")
@@ -362,11 +392,13 @@ def send_to_crm(**context):
     return crm_responses
 
 
-#  Envoi vers la Conformité 
+# =============================================================================
+# ├ëTAPE 5b : Envoi vers la Conformit├® (v├®rification r├®glementaire)
+# =============================================================================
 def send_to_conformite(**context):
     """
-    Envoie les données au module Conformité pour vérification réglementaire.
-    (KYC, RGPD, validité du document, etc.)
+    Envoie les donn├®es au module Conformit├® pour v├®rification r├®glementaire.
+    (KYC, RGPD, validit├® du document, etc.)
     """
     analysis_results = context["ti"].xcom_pull(
         task_ids="process_anomaly_detection", key="analysis_results"
@@ -375,10 +407,10 @@ def send_to_conformite(**context):
 
     for doc_key, data in analysis_results.items():
         if "error" in data or "error_anomaly" in data:
-            log_step(logger, "CONFORMITE", "SKIP", f"{doc_key} : erreur précédente")
+            log_step(logger, "CONFORMITE", "SKIP", f"{doc_key} : erreur pr├®c├®dente")
             continue
 
-        log_step(logger, "CONFORMITE", "START", f"Vérification conformité pour : {doc_key}")
+        log_step(logger, "CONFORMITE", "START", f"V├®rification conformit├® pour : {doc_key}")
 
         try:
             fields = data.get("fields", data["ocr_result"].get("champs",
@@ -392,7 +424,7 @@ def send_to_conformite(**context):
 
             log_step(
                 logger, "CONFORMITE", "SUCCESS",
-                f"{doc_key} – statut: {conformite_response.get('conformite_status')}"
+                f"{doc_key} ÔÇô statut: {conformite_response.get('conformite_status')}"
             )
 
         except Exception as e:
@@ -402,10 +434,12 @@ def send_to_conformite(**context):
     return conformite_responses
 
 
-# Notifier le backend du groupe
+# =============================================================================
+# ├ëTAPE 5c : Notifier le backend du groupe
+# =============================================================================
 def notify_backend(**context):
     """
-    Notifie le backend Express du groupe que le pipeline est terminé
+    Notifie le backend Express du groupe que le pipeline est termin├®
     pour chaque document curated.
     """
     curated_keys = context["ti"].xcom_pull(task_ids="store_curated", key="curated_keys") or {}
@@ -415,16 +449,18 @@ def notify_backend(**context):
         try:
             curated_data = download_json(BUCKET_CURATED, curated_key)
             notify_backend_document(doc_key, curated_data)
-            log_step(logger, "BACKEND_NOTIFY", "SUCCESS", f"{doc_key} – backend notifié")
+            log_step(logger, "BACKEND_NOTIFY", "SUCCESS", f"{doc_key} ÔÇô backend notifi├®")
         except Exception as e:
             log_step(logger, "BACKEND_NOTIFY", "ERROR", f"{doc_key} : {str(e)}")
 
 
-# Résumé / Log final du pipeline
+# =============================================================================
+# ├ëTAPE 6 : R├®sum├® / Log final du pipeline
+# =============================================================================
 def pipeline_summary(**context):
     """
-    Produit un résumé du pipeline complet pour chaque document traité.
-    Log le statut final et les résultats métier.
+    Produit un r├®sum├® du pipeline complet pour chaque document trait├®.
+    Log le statut final et les r├®sultats m├®tier.
     """
     documents = context["ti"].xcom_pull(task_ids="detect_documents", key="documents")
     curated_keys = context["ti"].xcom_pull(task_ids="store_curated", key="curated_keys") or {}
@@ -434,18 +470,114 @@ def pipeline_summary(**context):
     ) or {}
 
     logger.info("=" * 70)
-    logger.info("RÉSUMÉ DU PIPELINE – Hackathon 2026")
+    logger.info("R├ëSUM├ë DU PIPELINE ÔÇô Hackathon 2026")
     logger.info("=" * 70)
-    logger.info(f"Documents détectés : {len(documents)}")
+    logger.info(f"Documents d├®tect├®s : {len(documents)}")
     logger.info(f"Documents en curated : {len(curated_keys)}")
-    logger.info(f"Fiches CRM créées : {len(crm_responses)}")
-    logger.info(f"Vérifications conformité : {len(conformite_responses)}")
+    logger.info(f"Fiches CRM cr├®├®es : {len(crm_responses)}")
+    logger.info(f"V├®rifications conformit├® : {len(conformite_responses)}")
 
     for doc_key in documents:
         curated = "OK" if doc_key in curated_keys else "FAIL"
         crm = "OK" if doc_key in crm_responses else "FAIL"
         conf = "OK" if doc_key in conformite_responses else "FAIL"
-        logger.info(f"  {doc_key} → curated:{curated} | CRM:{crm} | conformité:{conf}")
+        logger.info(f"  {doc_key} ÔåÆ curated:{curated} | CRM:{crm} | conformit├®:{conf}")
         log_pipeline_end(logger, doc_key, success=(doc_key in curated_keys))
 
     logger.info("=" * 70)
+
+
+# =============================================================================
+# D├ëFINITION DU DAG
+# =============================================================================
+with DAG(
+    dag_id="document_processing_pipeline",
+    default_args=default_args,
+    description="Pipeline de traitement de documents administratifs ÔÇô Hackathon 2026",
+    schedule=timedelta(minutes=5),    # Scan toutes les 5 minutes
+    start_date=datetime(2026, 3, 15),
+    catchup=False,
+    max_active_runs=1,
+    tags=["hackathon", "documents", "pipeline", "admindocs"],
+) as dag:
+
+    # ---  V├®rification des services ---
+    t_check_services = PythonOperator(
+        task_id="check_services",
+        python_callable=check_services,
+    )
+
+    # ---  D├®tecter les documents dans raw ---
+    t_detect = PythonOperator(
+        task_id="detect_documents",
+        python_callable=detect_documents,
+    )
+
+    # --- Branchement : documents trouv├®s ? ---
+    t_branch = BranchPythonOperator(
+        task_id="branch_on_documents",
+        python_callable=branch_on_documents,
+    )
+
+    # --- T├óche vide : aucun document ---
+    t_no_docs = EmptyOperator(
+        task_id="no_documents",
+    )
+
+    # --- T├óche interm├®diaire pour le branchement ---
+    t_process = EmptyOperator(
+        task_id="process_documents",
+    )
+
+    # ---  OCR ---
+    t_ocr = PythonOperator(
+        task_id="process_ocr",
+        python_callable=process_ocr,
+    )
+
+    # ---  Anomaly Detection ---
+    t_anomaly = PythonOperator(
+        task_id="process_anomaly_detection",
+        python_callable=process_anomaly_detection,
+    )
+
+    # ---  Stocker en curated ---
+    t_curated = PythonOperator(
+        task_id="store_curated",
+        python_callable=store_curated,
+    )
+
+    # ---  Envoi CRM ---
+    t_crm = PythonOperator(
+        task_id="send_to_crm",
+        python_callable=send_to_crm,
+    )
+
+    # ---  Envoi Conformit├® ---
+    t_conformite = PythonOperator(
+        task_id="send_to_conformite",
+        python_callable=send_to_conformite,
+    )
+
+    # ---  Notifier le backend du groupe ---
+    t_notify = PythonOperator(
+        task_id="notify_backend",
+        python_callable=notify_backend,
+    )
+
+   
+    t_summary = PythonOperator(
+        task_id="pipeline_summary",
+        python_callable=pipeline_summary,
+        trigger_rule="none_failed_min_one_success",  # s'ex├®cute m├¬me si branche skip
+    )
+
+   
+
+    t_check_services >> t_detect >> t_branch
+
+    t_branch >> t_no_docs >> t_summary
+
+    t_branch >> t_process >> t_ocr >> t_anomaly >> t_curated
+
+    t_curated >> [t_crm, t_conformite, t_notify] >> t_summary
