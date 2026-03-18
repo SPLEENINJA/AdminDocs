@@ -3,16 +3,314 @@
 # Intégration complète avec le code du groupe (AdminDocs)
 #
 # Services :
-#   - team-backend     : Backend Express (port 4000) – branche frontend
+#   - team-backend     : Backend Express (port 4000)
 #   - ocr-service      : Pipeline OCR FastAPI + Gemini (port 8000)
-#   - airflow-*        : Orchestration (webserver 8080)
+#   - airflow-*        : Orchestration Airflow 3.1.2 CeleryExecutor (port 8080)
+#   - redis            : Broker Celery
 #   - minio            : Data Lake S3 (API 9000 / Console 8900)
 #   - postgres         : BDD Airflow (port 5432)
-#   - anomaly-service  : Mock Anomaly Detector (port 8002)
+#   - anomaly-service  : Anomaly Detector v2 (port 8002)
 #   - business-service : Mock CRM + Conformité (port 8003)
 # =============================================================================
 
-version: "3.8"
+x-airflow-common: &airflow-common
+  image: apache/airflow:3.0.0
+  env_file: .env
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: "46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho="
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__WEBSERVER__SECRET_KEY: hackathon2026secretkey
+    _PIP_ADDITIONAL_REQUIREMENTS: "requests minio boto3"
+    # MinIO
+    MINIO_ENDPOINT: minio:9000
+    MINIO_ACCESS_KEY: minio_user
+    MINIO_SECRET_KEY: minio_password
+    MINIO_BUCKET_RAW: raw
+    MINIO_BUCKET_CLEAN: clean
+    MINIO_BUCKET_CURATED: curated
+    # Services du groupe
+    OCR_SERVICE_URL: http://ocr-service:8000
+    ANOMALY_SERVICE_URL: http://anomaly-service:8002
+    BUSINESS_SERVICE_URL: http://business-service:8003
+    BACKEND_URL: http://team-backend:4000
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./plugins:/opt/airflow/plugins
+    - ./logs:/opt/airflow/logs
+    - ./utils:/opt/airflow/utils
+  depends_on: &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+  # ========================== FRONTEND REACT ==========================
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      team-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ========================== BACKEND EXPRESS ==========================
+  team-backend:
+    build:
+      context: ./team_backend
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      OCR_SERVICE_URL: http://ocr-service:8000
+    volumes:
+      - backend_uploads:/app/src/uploads
+      - backend_data:/app/src/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ========================== OCR SERVICE ==========================
+  ocr-service:
+    build:
+      context: ./ocr_pipeline
+    ports:
+      - "8000:8000"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      PDF_DPI: 200
+    volumes:
+      - ocr_storage:/app/storage
+      - ocr_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ========================== POSTGRES ==========================
+  postgres:
+    image: postgres:16
+    container_name: postgres-docs
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  # ========================== REDIS ==========================
+  redis:
+    image: redis:7.2-bookworm
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    restart: always
+
+  # ========================== AIRFLOW INIT ==========================
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate &&
+        airflow users create \
+          --username admin \
+          --password admin \
+          --firstname Admin \
+          --lastname Hackathon \
+          --role Admin \
+          --email admin@hackathon.local || true
+    restart: "no"
+
+  # ========================== AIRFLOW API SERVER ==========================
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ========================== AIRFLOW SCHEDULER ==========================
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ========================== AIRFLOW DAG PROCESSOR ==========================
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type DagProcessorJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ========================== AIRFLOW WORKER ==========================
+  airflow-worker:
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0"
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ========================== AIRFLOW TRIGGERER ==========================
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type TriggererJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ========================== MINIO ==========================
+  minio:
+    image: minio/minio:latest
+    command: server /data/minio --console-address ":8900"
+    environment:
+      MINIO_ROOT_USER: minio_user
+      MINIO_ROOT_PASSWORD: minio_password
+    ports:
+      - "9000:9000"
+      - "8900:8900"
+    volumes:
+      - minio_data:/data/minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ========================== MINIO INIT ==========================
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        mc alias set myminio http://minio:9000 minio_user minio_password &&
+        mc mb --ignore-existing myminio/raw &&
+        mc mb --ignore-existing myminio/clean &&
+        mc mb --ignore-existing myminio/curated &&
+        echo "=== Buckets créés : raw, clean, curated ==="
+    restart: "no"
+
+  # ========================== ANOMALY SERVICE ==========================
+  anomaly-service:
+    build:
+      context: ./mocks/anomaly_service
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ========================== BUSINESS SERVICE ==========================
+  business-service:
+    build:
+      context: ./mocks/business_service
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8003/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
+  backend_uploads:
+  backend_data:
+  ocr_storage:
+  ocr_logs:
 
 # ---------- variables réutilisables Airflow ----------
 x-airflow-common: &airflow-common
