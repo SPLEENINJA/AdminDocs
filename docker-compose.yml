@@ -26,6 +26,12 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     AIRFLOW__WEBSERVER__SECRET_KEY: hackathon2026secretkey
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW_SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+    AIRFLOW_SIMPLE_AUTH_MANAGER_USERS: "admin:Admin"
+    AIRFLOW__CORE__INTERNAL_API_URL: http://airflow-apiserver:8080
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: "hackathon2026-jwt-secret-key-fixed"
     _PIP_ADDITIONAL_REQUIREMENTS: "requests minio boto3"
     # MinIO
     MINIO_ENDPOINT: minio:9000
@@ -153,14 +159,7 @@ services:
     command:
       - -c
       - |
-        airflow db migrate &&
-        airflow users create \
-          --username admin \
-          --password admin \
-          --firstname Admin \
-          --lastname Hackathon \
-          --role Admin \
-          --email admin@hackathon.local || true
+        airflow db migrate
     restart: "no"
 
   # ========================== AIRFLOW API SERVER ==========================

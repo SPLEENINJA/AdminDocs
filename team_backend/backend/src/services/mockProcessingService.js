@@ -140,7 +140,7 @@ export async function processDocument(document) {
       const res = await fetch(`${OCR_SERVICE_URL}/documents/upload`, {
         method: 'POST',
         body: formData,
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(120000),
       });
 
       if (res.ok) {
