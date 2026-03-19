@@ -1,0 +1,27 @@
+{
+  "document_id": "ocr_upload_4fy_u_xr_20260317_193347_9c70b5ad",
+  "fichier_source": "2026-01 - Fabien ETHEVE - Bulletin de paie - janvier 2026-1.pdf",
+  "sha256": "3f9b279d336548f0cceff1e3e6c4995ce8004d39afb9dd068562be7af67e02a7",
+  "nb_pages": 1,
+  "chemin_raw": "/app/storage/raw/2026/03/17/ocr_upload_4fy_u_xr_20260317_193347_9c70b5ad.pdf",
+  "type_document": "inconnu",
+  "confiance": 0.7,
+  "champs": {
+    "siret": "40112055500032",
+    "siren": "401120555",
+    "raison_sociale": "ARTIMON",
+    "date_emission": "2026-01-01",
+    "date_expiration": null,
+    "montant_ht": null,
+    "montant_ttc": 1409.83,
+    "tva_taux": null,
+    "numero_document": null,
+    "iban": "FR7630066103350002035400128",
+    "bic": null,
+    "emetteur": "ARTIMON",
+    "destinataire": "Monsieur Fabien ETHEVE"
+  },
+  "qualite_scan": "bonne",
+  "anomalies": [],
+  "validation_errors": []
+}

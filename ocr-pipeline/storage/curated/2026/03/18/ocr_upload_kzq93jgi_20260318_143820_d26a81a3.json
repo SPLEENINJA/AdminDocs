@@ -1,0 +1,15 @@
+{
+  "document_id": "ocr_upload_kzq93jgi_20260318_143820_d26a81a3",
+  "fichier_source": "doc.pdf",
+  "sha256": "4d429c479bc5b004c3ac56e87de2d6a6f17abb8d1e4b0411a937f50fc2fbc003",
+  "nb_pages": 1,
+  "chemin_raw": "/app/storage/raw/2026/03/18/ocr_upload_kzq93jgi_20260318_143820_d26a81a3.pdf",
+  "type_document": "inconnu",
+  "confiance": 0.0,
+  "champs": {},
+  "qualite_scan": "inconnue",
+  "anomalies": [
+    "Erreur extraction : Tous les modèles Gemini sont en quota épuisé ou en erreur.\nModèles essayés : gemini-2.0-flash, gemini-2.5-flash-lite, gemini-3-flash, gemini-3.1-flash-lite\nAttends la réinitialisation du quota (minuit heure du Pacifique) ou active la facturation sur Google Cloud."
+  ],
+  "validation_errors": []
+}

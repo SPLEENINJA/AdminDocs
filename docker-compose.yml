@@ -62,6 +62,7 @@ services:
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     depends_on:
@@ -139,6 +140,8 @@ services:
       retries: 5
       start_period: 5s
     restart: always
+    networks:
+      - internal
 
   # ========================== REDIS ==========================
   redis:
@@ -314,6 +317,147 @@ services:
       retries: 3
     restart: unless-stopped
 
+  openmetadata-mysql:
+    image: docker.getcollate.io/openmetadata/db:1.6.0
+    container_name: openmetadata-mysql
+    command: "--sort_buffer_size=10M"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    volumes:
+      - openmetadata-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks:
+      - openmetadata-network
+    restart: unless-stopped
+
+  openmetadata-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.3
+    container_name: openmetadata-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false
+    volumes:
+      - openmetadata-es:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?pretty | grep -qE 'green|yellow'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    networks:
+      - openmetadata-network
+    restart: unless-stopped
+
+  # ── Migration (à lancer une fois avant le serveur) ────────────────
+
+  openmetadata-migrate:
+    image: docker.getcollate.io/openmetadata/server:1.6.0
+    container_name: openmetadata-migrate
+    command: "./bootstrap/openmetadata-ops.sh migrate"
+    environment:
+      DB_DRIVER_CLASS: com.mysql.cj.jdbc.Driver
+      DB_SCHEME: mysql
+      DB_PARAMS: allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: openmetadata_password
+      OM_DATABASE: openmetadata_db
+      DB_HOST: openmetadata-mysql
+      DB_PORT: 3306
+      ELASTICSEARCH_HOST: openmetadata-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      AUTHENTICATION_PROVIDER: basic
+      SERVER_HOST_API_URL: http://openmetadata-server:8585/api
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://airflow-apiserver:8080
+      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      MIGRATION_LIMIT_PARAM: 1200
+    depends_on:
+      openmetadata-mysql:
+        condition: service_healthy
+      openmetadata-elasticsearch:
+        condition: service_healthy
+    networks:
+      - openmetadata-network
+    restart: "no"
+
+  # ── OpenMetadata server ───────────────────────────────────────────
+
+  openmetadata-server:
+    image: docker.getcollate.io/openmetadata/server:1.6.0
+    container_name: openmetadata-server
+    environment:
+      DB_DRIVER_CLASS: com.mysql.cj.jdbc.Driver
+      DB_SCHEME: mysql
+      DB_PARAMS: allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: openmetadata_password
+      OM_DATABASE: openmetadata_db
+      DB_HOST: openmetadata-mysql
+      DB_PORT: 3306
+      ELASTICSEARCH_HOST: openmetadata-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      AUTHENTICATION_PROVIDER: basic
+      SERVER_HOST_API_URL: http://openmetadata-server:8585/api
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://airflow-apiserver:8080
+      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    ports:
+      - "8585:8585"
+      - "8586:8586"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8586/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    depends_on:
+      openmetadata-mysql:
+        condition: service_healthy
+      openmetadata-elasticsearch:
+        condition: service_healthy
+      openmetadata-migrate:
+        condition: service_completed_successfully
+    networks:
+      - openmetadata-network
+      - internal
+    restart: unless-stopped
+  
+
+  openmetadata-ingestion:
+    image: docker.getcollate.io/openmetadata/ingestion:1.6.0
+    container_name: openmetadata-ingestion
+    entrypoint: /bin/bash
+    command:
+      - "/opt/airflow/ingestion_dependency.sh"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-docs:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+      AIRFLOW__OPENMETADATA_AIRFLOW_APIS__DAG_GENERATED_CONFIGS: "/opt/airflow/dag_generated_configs"
+      OPENMETADATA_SERVER_URL: http://openmetadata-server:8585/api
+      DB_HOST: postgres-docs
+      DB_PORT: 5432
+      AIRFLOW_DB: airflow_ingestion
+      DB_SCHEME: postgresql+psycopg2
+      DB_USER: airflow
+      DB_PASSWORD: airflow
+    ports:
+      - "8083:8080"
+    volumes:
+      - ingestion-volume-dag-airflow:/opt/airflow/dag_generated_configs
+      - ingestion-volume-dags:/opt/airflow/dags
+      - ingestion-volume-tmp:/tmp
+    networks:
+      - openmetadata-network
+      - internal
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   minio_data:
@@ -322,4 +466,14 @@ volumes:
   ocr_storage:
   ocr_logs:
   airflow_home:
+  openmetadata-mysql:
+  openmetadata-es:
+  ingestion-volume-dag-airflow:
+  ingestion-volume-dags:
+  ingestion-volume-tmp:
+
+networks:
+  internal:
+  openmetadata-network:
+    driver: bridge
 

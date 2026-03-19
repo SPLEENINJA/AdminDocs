@@ -1,0 +1,27 @@
+{
+  "document_id": "ocr_upload_87iawkmr_20260317_195959_08f864f5",
+  "fichier_source": "2025-11 - Fabien ETHEVE - Bulletin de paie - novembre 2025.pdf",
+  "sha256": "a0af3f86124db972838c4acb2b52a09e54fb98fdcc68b08b29b947edaf0af121",
+  "nb_pages": 1,
+  "chemin_raw": "/app/storage/raw/2026/03/17/ocr_upload_87iawkmr_20260317_195959_08f864f5.pdf",
+  "type_document": "inconnu",
+  "confiance": 0.8,
+  "champs": {
+    "siret": "40112055500032",
+    "siren": "401120555",
+    "raison_sociale": "ARTIMON",
+    "date_emission": "2025-11-01",
+    "date_expiration": null,
+    "montant_ht": null,
+    "montant_ttc": 1471.49,
+    "tva_taux": null,
+    "numero_document": "00241",
+    "iban": "FR7630066103350002035400128",
+    "bic": null,
+    "emetteur": "ARTIMON",
+    "destinataire": "Monsieur Fabien ETHEVE"
+  },
+  "qualite_scan": "bonne",
+  "anomalies": [],
+  "validation_errors": []
+}
