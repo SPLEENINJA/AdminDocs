@@ -11,9 +11,14 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
     
+    console.log('Initialisation - Token présent:', !!token, 'User présent:', !!storedUser);
+    
     if (token && storedUser) {
       setUser(JSON.parse(storedUser));
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      console.log('Utilisateur restauré:', JSON.parse(storedUser).username);
+    } else {
+      console.warn('Pas de token ou user dans localStorage');
     }
     
     setLoading(false);
@@ -44,6 +49,7 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    console.log('Déconnexion de l\'utilisateur:', user?.username);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     delete api.defaults.headers.common['Authorization'];

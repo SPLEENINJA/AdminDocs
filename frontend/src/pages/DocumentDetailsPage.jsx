@@ -4,10 +4,10 @@ import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import { fetchDocumentById } from '../api/documents';
 
-const MINIO_BASE = 'http://localhost:9000/raw';
+const MINIO_BASE = 'http://localhost:9000';
 
 function FilePreview({ filename }) {
-  const url = `${MINIO_BASE}/${filename}`;
+  const url = `${MINIO_BASE}/raw/${filename}`;
   const isPdf = filename?.toLowerCase().endsWith('.pdf');
 
   return (
@@ -33,7 +33,7 @@ export default function DocumentDetailsPage() {
   if (!document) return <p className="text-slate-400">Chargement...</p>;
 
   const storedFilename = document.metadata?.storedFilename;
-  const minioUrl = `${MINIO_BASE}/${storedFilename}`;
+  const minioUrl = `${MINIO_BASE}/raw/${storedFilename}`;
 
   return (
     <div className="space-y-6">

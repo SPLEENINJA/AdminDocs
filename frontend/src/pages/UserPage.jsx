@@ -91,15 +91,26 @@ export default function UserPage() {
           fetchDocuments(token)
         ]);
 
+        console.log('[UserPage] Documents reçus:', allDocuments?.length || 0);
         setUserData(complianceData);
 
         const filteredDocs = (allDocuments || []).filter(
-          (doc) => doc.metadata?.extractedData?.siret === selectedId
+          (doc) => {
+            const siret = doc.metadata?.extractedData?.siret;
+            const supplierName = doc.metadata?.extractedData?.supplierName;
+            return siret === selectedId || supplierName === selectedId;
+          }
         );
 
+        console.log('[UserPage] Documents filtrés pour', selectedId, ':', filteredDocs.length);
         setDocuments(filteredDocs);
       } catch (error) {
-        console.error(error);
+        console.error('[UserPage] Erreur lors du chargement des données:', error);
+        console.error('[UserPage] Détails:', {
+          message: error.message,
+          status: error.response?.status,
+          url: error.config?.url
+        });
       } finally {
         setLoading(false);
       }

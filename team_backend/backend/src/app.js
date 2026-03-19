@@ -14,7 +14,12 @@ import { authenticateToken } from './middleware/auth.js';
 const app = express();
 const __dirname = path.resolve();
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
 

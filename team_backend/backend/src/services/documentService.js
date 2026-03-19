@@ -136,9 +136,9 @@ export async function runPipeline(documentId) {
 
 
 export async function getAllDocuments(userId) {
-  try {
-    const client = await pool.connect();
+  const client = await pool.connect();
 
+  try {
     const data = await client.query(
       `SELECT * FROM documents WHERE user_id = $1 ORDER BY created_at DESC `,
       [userId]
@@ -148,8 +148,10 @@ export async function getAllDocuments(userId) {
 
   } catch (error) {
     console.error("Error fetching documents:", error);
+    return [];
+  } finally {
+    client.release();
   }
-  return [];
 }
 
 export async function getDocumentById(documentId) {
@@ -182,12 +184,13 @@ export async function getAllSuppliers() {
 
     for (const row of rows) {
       const data = row.data;
-      if (!data?.siret) continue;
+      if (!data?.siret && !data?.supplierName) continue;
 
-      if (!suppliersMap.has(data.siret)) {
-        suppliersMap.set(data.siret, {
+      const key = data.siret || data.supplierName;
+      if (!suppliersMap.has(key)) {
+        suppliersMap.set(key, {
           supplierName: data.supplierName,
-          siret: data.siret,
+          siret: data.siret || key, // Utiliser supplierName comme ID si pas de SIRET
           vat: data.vat,
           iban: data.iban,
           address: data.address || data.adresseEmetteur
@@ -209,7 +212,8 @@ export async function getSupplierById(siret) {
     const { rows } = await client.query(
       `SELECT metadata->'extractedData' AS data
        FROM documents
-       WHERE metadata->'extractedData'->>'siret' = $1`,
+       WHERE metadata->'extractedData'->>'siret' = $1
+          OR metadata->'extractedData'->>'supplierName' = $1`,
       [siret]
     );
 
@@ -219,7 +223,7 @@ export async function getSupplierById(siret) {
 
     return {
       supplierName: data.supplierName,
-      siret: data.siret,
+      siret: data.siret || siret,
       vat: data.vat,
       iban: data.iban,
       address: data.address || data.adresseEmetteur
@@ -237,7 +241,8 @@ export async function getComplianceBySupplierId(siret) {
     const { rows } = await client.query(
       `SELECT *
        FROM documents
-       WHERE metadata->'extractedData'->>'siret' = $1`,
+       WHERE metadata->'extractedData'->>'siret' = $1
+          OR metadata->'extractedData'->>'supplierName' = $1`,
       [siret]
     );
 
@@ -259,8 +264,10 @@ export async function getComplianceBySupplierId(siret) {
       (doc) => doc.validation?.anomalies || []
     );
 
+    const supplierName = rows[0]?.metadata?.extractedData?.supplierName || siret;
     return {
       supplierId: siret,
+      supplierName: supplierName,
       documentsReceived,
       checks: [
         {

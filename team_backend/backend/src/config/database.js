@@ -8,6 +8,9 @@ const pool = new Pool({
   database: process.env.POSTGRES_DB || 'airflow',
   user: process.env.POSTGRES_USER || 'airflow',
   password: process.env.POSTGRES_PASSWORD || 'airflow',
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 
 pool.on('error', (err) => {
