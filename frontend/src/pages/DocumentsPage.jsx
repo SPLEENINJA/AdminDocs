@@ -10,7 +10,8 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState([]);
 
   useEffect(() => {
-    fetchDocuments().then(setDocuments).catch(console.error);
+    const token = localStorage.getItem('token');
+    fetchDocuments(token).then(setDocuments).catch(console.error);
   }, []);
 
   return (
@@ -26,16 +27,15 @@ export default function DocumentsPage() {
 
         <div className="divide-y divide-slate-800">
           {documents.map((doc) => (
-            <div key={doc.id} className="grid grid-cols-6 gap-4 px-4 py-4 text-sm">
+            <div key={String(doc.id)} className="grid grid-cols-6 gap-4 px-4 py-4 text-sm">
               <div className="col-span-2">
                 <p className="font-medium text-white">{doc.filename}</p>
-                <p className="text-slate-500">{doc.id.slice(0, 8)}</p>
               </div>
-              <p className="text-slate-300">{doc.documentType || '-'}</p>
-              <p className="text-slate-300">{formatDate(doc.createdAt)}</p>
-              <Badge status={doc.validation?.status || doc.status}>{doc.validation?.status || doc.status}</Badge>
+              <p className="text-slate-300">{doc.mimetype || '-'}</p>
+              <p className="text-slate-300">{formatDate(doc.created_at)}</p>
+              {/* <Badge status={doc.validation?.status || doc.status}>{doc.validation?.status || doc.status}</Badge> */}
               <div>
-                <Link className="inline-flex items-center gap-2 text-brand-500" to={`/documents/${doc.id}`}>
+                <Link className="inline-flex items-center gap-2 text-brand-500" to={`/documents/${String(doc.id)}`}>
                   <Eye size={16} /> Détails
                 </Link>
               </div>

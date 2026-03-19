@@ -2,6 +2,7 @@ import api from './client';
 
 export async function fetchSuppliers() {
   const { data } = await api.get('/suppliers');
+  console.log("Suppliers fetched:", data);
   return data;
 }
 

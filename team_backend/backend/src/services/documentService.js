@@ -1,8 +1,8 @@
-import path from 'path';
-import { randomUUID } from 'crypto';
-import { readDb, writeDb } from './db.js';
-import { processDocument } from './mockProcessingService.js';
-import { uploadToRaw, uploadJsonToClean } from './minioService.js';
+import path from "path";
+import { randomUUID } from "crypto";
+import { processDocument } from "./mockProcessingService.js";
+import { uploadToRaw, uploadJsonToClean } from "./minioService.js";
+import pool from "../config/database.js";
 
 // File d'attente globale : les documents uploadés ensemble sont traités 1 par 1
 let pipelineQueue = Promise.resolve();
@@ -13,174 +13,279 @@ function enqueuePipeline(documentId) {
     .catch((err) => console.error(`[pipeline] Erreur doc ${documentId}:`, err));
 }
 
-export async function createUploadedDocuments(files) {
-  const db = await readDb();
+export async function createUploadedDocuments(files, userId) {
+  const client = await pool.connect();
 
-  const createdDocs = files.map((file) => ({
-    id: randomUUID(),
-    filename: file.originalname,
-    storedFilename: file.filename,
-    mimetype: file.mimetype,
-    size: file.size,
-    status: 'uploaded',
-    step: 'raw_storage',
-    createdAt: new Date().toISOString(),
-    rawPath: path.posix.join('/raw', file.filename),
-    cleanPath: null,
-    curatedPath: null,
-    ocrText: '',
-    documentType: null,
-    extractedData: null,
-    validation: null,
-    supplierId: null,
-    previewUrl: `/uploads/${file.filename}`
-  }));
+  try {
+    await client.query('BEGIN');
 
-  db.documents.unshift(...createdDocs);
-  await writeDb(db);
+    const createdDocs = [];
 
-  // Enfile chaque document dans la queue — traitement séquentiel garanti
-  for (const doc of createdDocs) {
-    enqueuePipeline(doc.id);
+    for (const file of files) {
+      const result = await client.query(
+        `INSERT INTO documents (user_id, mimetype, size, filename, path, metadata)
+         VALUES ($1,$2,$3,$4,$5, $6)
+         RETURNING *`,
+        [
+          userId,
+          file.mimetype,
+          file.size,
+          file.originalname,
+          `/uploads/${file.filename}`,
+          JSON.stringify({
+            storedFilename: file.filename,
+            status: 'uploaded',
+            step: 'raw_storage'
+          })
+        ]
+      );
+
+      const doc = result.rows[0];
+      createdDocs.push(doc);
+
+      enqueuePipeline(doc.id);
+    }
+
+    await client.query('COMMIT');
+    return createdDocs;
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return createdDocs;
 }
 
 export async function runPipeline(documentId) {
-  console.log(`[pipeline] Début traitement : ${documentId}`);
+  const client = await pool.connect();
 
-  let db = await readDb();
-  const document = db.documents.find((item) => item.id === documentId);
-  if (!document) return;
+  try {
+    console.log(`[pipeline] Début traitement : ${documentId}`);
 
-  // 1. Upload vers MinIO raw (awaité pour garantir l'ordre)
-  const uploadDir = path.resolve('src/uploads');
-  const filePath = path.join(uploadDir, document.storedFilename);
-  await uploadToRaw(document.storedFilename, filePath, document.mimetype);
+    const { rows } = await client.query(
+      `SELECT * FROM documents WHERE id = $1`,
+      [documentId]
+    );
 
-  // 2. Marquer en cours
-  document.status = 'processing';
-  document.step = 'ocr';
-  await writeDb(db);
+    const document = rows[0];
+    if (!document) return;
 
-  // 3. OCR
-  const result = await processDocument(document);
+    const metadata = document.metadata || {};
+    const uploadDir = path.resolve('src/uploads');
+    const filePath = path.join(uploadDir, metadata.storedFilename);
 
-  // 4. Relire la DB fraîche avant d'écrire (évite les conflits résiduels)
-  db = await readDb();
-  const currentDoc = db.documents.find((item) => item.id === documentId);
-  if (!currentDoc) return;
+    await uploadToRaw(metadata.storedFilename, filePath, document.mimetype);
 
-  currentDoc.status = 'processed';
-  currentDoc.step = 'validation';
-  currentDoc.documentType = result.documentType;
-  currentDoc.ocrText = result.ocrText;
-  currentDoc.extractedData = result.extractedData;
-  currentDoc.validation = result.validation;
-  currentDoc.cleanPath = `/clean/${documentId}.json`;
-  currentDoc.curatedPath = `/curated/${documentId}.json`;
+    // update status -> processing
+    await client.query(
+      `UPDATE documents
+       SET metadata = $2
+       WHERE id = $1`,
+      [
+        documentId,
+        {
+          ...metadata,
+          status: 'processing',
+          step: 'ocr'
+        }
+      ]
+    );
 
-  const supplierId = upsertSupplierFromDocument(db, currentDoc);
-  currentDoc.supplierId = supplierId;
-  currentDoc.status = 'validated';
-  currentDoc.step = 'completed';
-  await writeDb(db);
+    const result = await processDocument({
+      ...document,
+      ...metadata
+    });
 
-  // 5. Upload résultat OCR vers MinIO clean (awaité)
-  await uploadJsonToClean(documentId, {
-    documentId,
-    filename: document.filename,
-    storedFilename: document.storedFilename,
-    documentType: result.documentType,
-    extractedData: result.extractedData,
-    validation: result.validation,
-    ocrText: result.ocrText,
-    processedAt: new Date().toISOString(),
-  });
+    // update final
+    await client.query(
+      `UPDATE documents
+       SET 
+         ocr_text = $2,
+         metadata = $3
+       WHERE id = $1`,
+      [
+        documentId,
+        result.ocrText,
+        {
+          ...metadata,
+          status: 'validated',
+          step: 'completed',
+          documentType: result.documentType,
+          extractedData: result.extractedData,
+          validation: result.validation,
+          cleanPath: `/clean/${documentId}.json`,
+          curatedPath: `/curated/${documentId}.json`
+        }
+      ]
+    );
 
-  console.log(`[pipeline] Terminé : ${documentId}`);
-}
+    await uploadJsonToClean(documentId, {
+      documentId,
+      filename: document.filename,
+      ...result
+    });
 
-function upsertSupplierFromDocument(db, document) {
-  if (!document.extractedData) return null;
+    console.log(`[pipeline] Terminé : ${documentId}`);
 
-  const { supplierName, siret, vat, iban, address } = document.extractedData;
-  let supplier = db.suppliers.find((item) => item.siret === siret);
-
-  if (!supplier) {
-    supplier = {
-      id: randomUUID(),
-      supplierName,
-      siret,
-      vat,
-      iban,
-      address,
-      status: document.validation?.status === 'validated' ? 'verified' : 'pending',
-      documentIds: [document.id],
-      createdAt: new Date().toISOString()
-    };
-    db.suppliers.unshift(supplier);
-  } else {
-    supplier.documentIds = Array.from(new Set([...(supplier.documentIds || []), document.id]));
-    supplier.supplierName = supplierName || supplier.supplierName;
-    supplier.vat = vat || supplier.vat;
-    supplier.iban = iban || supplier.iban;
-    supplier.address = address || supplier.address;
-    if (document.validation?.status === 'warning') supplier.status = 'pending';
+  } finally {
+    client.release();
   }
-
-  return supplier.id;
 }
 
-export async function getAllDocuments() {
-  const db = await readDb();
-  return db.documents;
+
+
+export async function getAllDocuments(userId) {
+  try {
+    const client = await pool.connect();
+
+    const data = await client.query(
+      `SELECT * FROM documents WHERE user_id = $1 ORDER BY created_at DESC `,
+      [userId]
+    );
+
+    return data.rows;
+
+  } catch (error) {
+    console.error("Error fetching documents:", error);
+  }
+  return [];
 }
 
 export async function getDocumentById(documentId) {
-  const db = await readDb();
-  return db.documents.find((item) => item.id === documentId);
+  const client = await pool.connect();
+
+  try {
+    const { rows } = await client.query(
+      `SELECT * FROM documents WHERE id = $1`,
+      [documentId]
+    );
+
+    return rows[0] || null;
+
+  } finally {
+    client.release();
+  }
 }
 
 export async function getAllSuppliers() {
-  const db = await readDb();
-  return db.suppliers;
-}
+  const client = await pool.connect();
 
-export async function getSupplierById(id) {
-  const db = await readDb();
-  return db.suppliers.find((item) => item.id === id);
-}
+  try {
+    const { rows } = await client.query(
+      `SELECT metadata->'extractedData' AS data
+       FROM documents
+       WHERE metadata->'extractedData' IS NOT NULL`
+    );
 
-export async function getComplianceBySupplierId(id) {
-  const db = await readDb();
-  const supplier = db.suppliers.find((item) => item.id === id);
-  if (!supplier) return null;
+    const suppliersMap = new Map();
 
-  const documents = db.documents.filter((doc) => supplier.documentIds?.includes(doc.id));
-  const documentsReceived = documents.map((doc) => doc.documentType || 'pending');
-  const anomalies = documents.flatMap((doc) => doc.validation?.anomalies || []);
+    for (const row of rows) {
+      const data = row.data;
+      if (!data?.siret) continue;
 
-  return {
-    supplierId: supplier.id,
-    supplierName: supplier.supplierName,
-    documentsReceived,
-    checks: [
-      {
-        name: 'Présence des documents',
-        status: documents.length >= 2 ? 'passed' : 'warning'
-      },
-      {
-        name: 'Cohérence SIRET',
-        status: anomalies.some((item) => item.toLowerCase().includes('siret')) ? 'failed' : 'passed'
-      },
-      {
-        name: 'Validité des attestations',
-        status: anomalies.some((item) => item.toLowerCase().includes('expiration')) ? 'failed' : 'passed'
+      if (!suppliersMap.has(data.siret)) {
+        suppliersMap.set(data.siret, {
+          supplierName: data.supplierName,
+          siret: data.siret,
+          vat: data.vat,
+          iban: data.iban,
+          address: data.address
+        });
       }
-    ],
-    anomalies,
-    globalStatus: anomalies.length ? 'warning' : 'validated'
-  };
+    }
+
+    return Array.from(suppliersMap.values());
+
+  } finally {
+    client.release();
+  }
 }
+
+export async function getSupplierById(siret) {
+  const client = await pool.connect();
+
+  try {
+    const { rows } = await client.query(
+      `SELECT metadata->'extractedData' AS data
+       FROM documents
+       WHERE metadata->'extractedData'->>'siret' = $1`,
+      [siret]
+    );
+
+    if (!rows.length) return null;
+
+    const data = rows[0].data;
+
+    return {
+      supplierName: data.supplierName,
+      siret: data.siret,
+      vat: data.vat,
+      iban: data.iban,
+      address: data.address
+    };
+
+  } finally {
+    client.release();
+  }
+}
+
+export async function getComplianceBySupplierId(siret) {
+  const client = await pool.connect();
+
+  try {
+    const { rows } = await client.query(
+      `SELECT *
+       FROM documents
+       WHERE metadata->'extractedData'->>'siret' = $1`,
+      [siret]
+    );
+
+    if (!rows.length) return null;
+
+    const documents = rows.map(doc => {
+      const metadata = doc.metadata || {};
+      return {
+        documentType: metadata.documentType,
+        validation: metadata.validation
+      };
+    });
+
+    const documentsReceived = documents.map(
+      (doc) => doc.documentType || 'pending'
+    );
+
+    const anomalies = documents.flatMap(
+      (doc) => doc.validation?.anomalies || []
+    );
+
+    return {
+      supplierId: siret,
+      documentsReceived,
+      checks: [
+        {
+          name: 'Présence des documents',
+          status: documents.length >= 2 ? 'passed' : 'warning'
+        },
+        {
+          name: 'Cohérence SIRET',
+          status: anomalies.some(a => a.toLowerCase().includes('siret'))
+            ? 'failed'
+            : 'passed'
+        },
+        {
+          name: 'Validité des attestations',
+          status: anomalies.some(a => a.toLowerCase().includes('expiration'))
+            ? 'failed'
+            : 'passed'
+        }
+      ],
+      anomalies,
+      globalStatus: anomalies.length ? 'warning' : 'validated'
+    };
+
+  } finally {
+    client.release();
+  }
+}
+

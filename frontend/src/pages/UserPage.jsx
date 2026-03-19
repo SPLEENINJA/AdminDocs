@@ -83,14 +83,16 @@ export default function UserPage() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchSuppliers()
-      .then((items) => {
-        setSuppliers(items || []);
+useEffect(() => {
+  fetchSuppliers()
+    .then((items) => {
+      setSuppliers(items || []);
+      if (!selectedId) {
         setSelectedId(selectedFromUrl || items[0]?.id || '');
-      })
-      .catch(console.error);
-  }, [selectedFromUrl]);
+      }
+    })
+    .catch(console.error);
+}, [selectedFromUrl]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -139,9 +141,9 @@ export default function UserPage() {
     <div className="grid gap-6 xl:grid-cols-[320px,1fr]">
       <Card title="Mes dossiers">
         <div className="space-y-3">
-          {suppliers.map((item) => (
+          {suppliers.map((item, idx) => (
             <button
-              key={item.id}
+              key={idx}
               onClick={() => setSelectedId(item.id)}
               className={`w-full rounded-2xl border p-4 text-left transition ${
                 selectedId === item.id
