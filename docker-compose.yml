@@ -88,11 +88,18 @@ services:
       MINIO_SECRET_KEY: minio_password
       MINIO_BUCKET_RAW: raw
       MINIO_BUCKET_CLEAN: clean
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
     volumes:
       - backend_uploads:/app/src/uploads
       - backend_data:/app/src/data
     depends_on:
       minio:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:4000/api/health || exit 1"]
