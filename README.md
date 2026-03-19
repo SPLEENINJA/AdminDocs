@@ -2,6 +2,11 @@
 
 Pipeline de traitement automatique de documents administratifs (factures, devis, kbis, attestations URSSAF, RIB, SIRET), orchestré par **Apache Airflow**, avec stockage **MinIO** (Data Lake S3-compatible), service **OCR Gemini Vision** et backend **Express** du groupe.
 
+Pour lancer le projet :
+1 - Ouvrir un terminal à la racine du projet 
+2 - bash start.sh
+3 - Bienvenue sur AdminDocs ! 
+
 ---
 
 ## Architecture
