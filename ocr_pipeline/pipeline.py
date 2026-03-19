@@ -23,6 +23,126 @@ from datetime import datetime
 import streamlit as st
 from PIL import Image
 
+from config import PDF_DPI
+from services import (
+    extract_from_image,
+    merge_page_results,
+    load_document_as_images,
+    save_raw,
+    save_clean,
+    save_curated,
+    list_curated,
+    storage_summary,
+)
+from services.chroma import store_document
+from services.validator import validate_single
+from utils.helpers import file_sha256, generate_document_id
+
+# ── Fonctions pipeline (exportées) ───────────────────────────────────────────
+
+def process_document(file_path: str, original_filename: str | None = None) -> dict:
+    """Traite un document (PDF / image) et renvoie le résultat JSON structuré."""
+
+    original_filename = original_filename or Path(file_path).name
+    document_id = generate_document_id(original_filename)
+
+    result = {
+        "document_id": document_id,
+        "fichier_source": original_filename,
+    }
+
+    try:
+        result["sha256"] = file_sha256(file_path)
+    except Exception:
+        pass
+
+    try:
+        save_raw(file_path, document_id)
+    except Exception:
+        # Échec du stockage RAW n'est pas bloquant
+        pass
+
+    try:
+        images, _converted = load_document_as_images(file_path, dpi=PDF_DPI)
+        page_results = [
+            extract_from_image(image, page_num=i + 1)
+            for i, image in enumerate(images)
+        ]
+        merged = merge_page_results(page_results)
+
+        merged["document_id"] = document_id
+        merged["fichier_source"] = original_filename
+        merged["nb_pages"] = len(images)
+
+        # Validation simple (SIRET/SIREN/IBAN / dates / montants)
+        merged["validation_errors"] = validate_single(
+            merged.get("type_document", "inconnu"),
+            merged.get("champs", {}),
+        )
+
+        # Sauvegarde des résultats
+        try:
+            save_clean(document_id, merged.get("texte_brut", ""))
+        except Exception:
+            pass
+
+        try:
+            save_curated(document_id, merged)
+        except Exception:
+            pass
+
+        try:
+            store_document(merged, merged.get("texte_brut", ""))
+        except Exception:
+            pass
+
+        return merged
+
+    except Exception as e:
+        err = str(e)
+        return {
+            **result,
+            "type_document": "inconnu",
+            "confiance": 0.0,
+            "champs": {},
+            "qualite_scan": "inconnue",
+            "texte_brut": "",
+            "anomalies": [f"Erreur pipeline : {err}"],
+            "validation_errors": [err],
+            "nb_pages": 0,
+            "erreur": err,
+        }
+
+
+def process_batch(paths: list[str], original_filenames: list[str] | None = None) -> list[dict]:
+    """Traite un lot de documents."""
+
+    if original_filenames is None:
+        original_filenames = [None] * len(paths)
+
+    results = []
+    for path, orig in zip(paths, original_filenames):
+        try:
+            results.append(process_document(path, original_filename=orig))
+        except Exception as e:
+            err = str(e)
+            results.append({
+                "document_id": generate_document_id(orig or path),
+                "fichier_source": orig or Path(path).name,
+                "type_document": "inconnu",
+                "confiance": 0.0,
+                "champs": {},
+                "qualite_scan": "inconnue",
+                "texte_brut": "",
+                "anomalies": [f"Erreur pipeline : {err}"],
+                "validation_errors": [err],
+                "nb_pages": 0,
+                "erreur": err,
+            })
+
+    return results
+
+
 # ── Ajout du répertoire racine au path ────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -112,7 +232,6 @@ def load_pipeline():
     try:
         from config import validate_config
         validate_config()
-        from pipeline import process_document, process_batch
         from services.storage import list_curated, storage_summary
         from services.chroma import query_documents, count_documents, store_document
         from services.validator import validate_cross
