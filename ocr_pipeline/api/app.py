@@ -29,11 +29,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from config import validate_config, LOGS_DIR
+from config import validate_config, LOGS_DIR, GEMINI_API_KEY, GEMINI_MODEL
 from utils.logger import get_logger
 from pipeline import process_document, process_batch
 from services.storage import list_curated, load_curated, storage_summary
 from services.validator import validate_cross
+from services.chroma import query_documents, count_documents
 
 logger = get_logger("ocr_service.api", LOGS_DIR)
 
@@ -95,6 +96,21 @@ class StatsResponse(BaseModel):
     curated: int
 
 
+
+class ChatRequest(BaseModel):
+    question:  str
+    n_results: int = 5
+
+class ChatSource(BaseModel):
+    fichier_source: str
+    type_document:  str
+    similarity:     float
+
+class ChatResponse(BaseModel):
+    answer:          str
+    sources:         List[ChatSource]
+    documents_count: int
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"}
@@ -124,6 +140,24 @@ async def _save_upload_temp(upload: UploadFile) -> str:
     ) as tmp:
         tmp.write(content)
         return tmp.name
+
+
+
+def _call_gemini(prompt: str) -> str:
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[genai_types.Part.from_text(text=prompt)],
+            config=genai_types.GenerateContentConfig(temperature=0.3, max_output_tokens=1024),
+        )
+        return response.text
+    except ImportError:
+        import google.generativeai as gl
+        gl.configure(api_key=GEMINI_API_KEY)
+        return gl.GenerativeModel(GEMINI_MODEL).generate_content(prompt).text
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -231,6 +265,68 @@ async def cross_validate(body: CrossValidateRequest):
         "is_coherent":        len(warnings) == 0,
     }
 
+
+
+
+@app.post("/documents/chat", response_model=ChatResponse, tags=["Chat"])
+async def chat_with_documents(body: ChatRequest):
+    """
+    Pose une question en langage naturel sur les documents indexés dans ChromaDB.
+    Recherche sémantique → contexte injecté dans Gemini → réponse + sources.
+    """
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="La question ne peut pas être vide.")
+
+    n_docs = count_documents()
+    if n_docs == 0:
+        return ChatResponse(
+            answer="Aucun document indexé. Veuillez d'abord analyser des documents via l'upload.",
+            sources=[],
+            documents_count=0,
+        )
+
+    hits = query_documents(body.question, n_results=body.n_results)
+    if not hits:
+        return ChatResponse(
+            answer="Je n'ai trouvé aucun document correspondant à votre question.",
+            sources=[],
+            documents_count=n_docs,
+        )
+
+    context = "\n\n".join(
+        f"--- Document {i} ({h.get('metadata', {}).get('fichier_source', '?')}) ---\n"
+        f"Type : {h.get('metadata', {}).get('type_document', '?')}\n"
+        f"Contenu : {h['content'][:800]}"
+        for i, h in enumerate(hits, 1)
+    )
+
+    prompt = f"""Tu es un assistant expert en documents administratifs français.
+Réponds à la question en te basant UNIQUEMENT sur les documents fournis.
+Sois précis, cite les noms de fichiers et valeurs exactes si possible.
+Si la réponse n'est pas dans les documents, dis-le clairement.
+
+DOCUMENTS :
+{context}
+
+QUESTION : {body.question}
+
+RÉPONSE (en français) :"""
+
+    try:
+        answer = _call_gemini(prompt)
+    except Exception as e:
+        logger.error(f"Erreur Gemini chat : {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur génération réponse : {str(e)}")
+
+    sources = [
+        ChatSource(
+            fichier_source=h.get("metadata", {}).get("fichier_source", "?"),
+            type_document=h.get("metadata", {}).get("type_document", "?"),
+            similarity=h.get("similarity", 0.0),
+        )
+        for h in hits
+    ]
+    return ChatResponse(answer=answer, sources=sources, documents_count=n_docs)
 
 # ── Lancement direct ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
