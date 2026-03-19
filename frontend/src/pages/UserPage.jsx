@@ -4,7 +4,6 @@ import {
   FileText,
   TriangleAlert,
   CheckCircle2,
-  FolderOpen,
   ArrowRight
 } from 'lucide-react';
 import Card from '../components/ui/Card';
@@ -14,7 +13,6 @@ import { fetchDocuments } from '../api/documents';
 
 function normalizeStatus(status) {
   const value = String(status || '').toLowerCase();
-
   if (value === 'passed' || value === 'validated' || value === 'ok') return 'ok';
   if (value === 'failed' || value === 'échec' || value === 'echec') return 'failed';
   if (value === 'warning') return 'warning';
@@ -26,37 +24,24 @@ function getDocStatus(doc) {
 }
 
 function statusPillClass(status) {
-  if (status === 'ok') {
-    return 'border border-emerald-500/20 bg-emerald-500/15 text-emerald-300';
-  }
-  if (status === 'failed') {
-    return 'border border-rose-500/20 bg-rose-500/15 text-rose-300';
-  }
-  if (status === 'warning') {
-    return 'border border-amber-500/20 bg-amber-500/15 text-amber-300';
-  }
+  if (status === 'ok') return 'border border-emerald-500/20 bg-emerald-500/15 text-emerald-300';
+  if (status === 'failed') return 'border border-rose-500/20 bg-rose-500/15 text-rose-300';
+  if (status === 'warning') return 'border border-amber-500/20 bg-amber-500/15 text-amber-300';
   return 'border border-slate-700 bg-slate-800 text-slate-300';
 }
 
 function getGlobalChecklistStatus(checks = []) {
   if (!checks.length) return 'pending';
-
   const normalized = checks.map((check) => normalizeStatus(check.status));
-
   if (normalized.includes('failed')) return 'partial';
   if (normalized.includes('warning')) return 'partial';
   if (normalized.every((item) => item === 'ok')) return 'ok';
-
   return 'pending';
 }
 
 function globalChecklistClass(status) {
-  if (status === 'ok') {
-    return 'border border-emerald-500/20 bg-emerald-500/15 text-emerald-300';
-  }
-  if (status === 'partial') {
-    return 'border border-amber-500/20 bg-amber-500/15 text-amber-300';
-  }
+  if (status === 'ok') return 'border border-emerald-500/20 bg-emerald-500/15 text-emerald-300';
+  if (status === 'partial') return 'border border-amber-500/20 bg-amber-500/15 text-amber-300';
   return 'border border-slate-700 bg-slate-800 text-slate-300';
 }
 
@@ -69,13 +54,12 @@ function displayCheckName(name) {
     'Adresse cohérente': 'Adresse cohérente',
     'Document principal lisible': 'Document principal lisible'
   };
-
   return mapping[name] || name;
 }
 
 export default function UserPage() {
   const [searchParams] = useSearchParams();
-  const selectedFromUrl = searchParams.get('selected');
+  const selectedFromUrl = searchParams.get('supplierId');
 
   const [suppliers, setSuppliers] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -83,16 +67,16 @@ export default function UserPage() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-useEffect(() => {
-  fetchSuppliers()
-    .then((items) => {
-      setSuppliers(items || []);
-      if (!selectedId) {
-        setSelectedId(selectedFromUrl || items[0]?.id || '');
-      }
-    })
-    .catch(console.error);
-}, [selectedFromUrl]);
+  useEffect(() => {
+    fetchSuppliers()
+      .then((items) => {
+        setSuppliers(items || []);
+        if (!selectedId) {
+          setSelectedId(selectedFromUrl || items[0]?.siret || '');
+        }
+      })
+      .catch(console.error);
+  }, [selectedFromUrl]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -100,16 +84,17 @@ useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
+        const token = localStorage.getItem('token');
 
         const [complianceData, allDocuments] = await Promise.all([
           fetchCompliance(selectedId),
-          fetchDocuments()
+          fetchDocuments(token)
         ]);
 
         setUserData(complianceData);
 
         const filteredDocs = (allDocuments || []).filter(
-          (doc) => doc.supplierId === selectedId
+          (doc) => doc.metadata?.extractedData?.siret === selectedId
         );
 
         setDocuments(filteredDocs);
@@ -125,28 +110,23 @@ useEffect(() => {
 
   const checklistStatus = getGlobalChecklistStatus(userData?.checks || []);
 
-  const stats = useMemo(() => {
-    return {
-      total: documents.length,
-      validated: documents.filter((doc) => getDocStatus(doc) === 'validated').length,
-      warning: documents.filter((doc) => getDocStatus(doc) === 'warning').length,
-      anomalies: documents.reduce(
-        (acc, doc) => acc + (doc.validation?.anomalies?.length || 0),
-        0
-      )
-    };
-  }, [documents]);
+  const stats = useMemo(() => ({
+    total: documents.length,
+    validated: documents.filter((doc) => normalizeStatus(getDocStatus(doc)) === 'ok').length,
+    warning: documents.filter((doc) => normalizeStatus(getDocStatus(doc)) === 'warning').length,
+    anomalies: documents.reduce((acc, doc) => acc + (doc.validation?.anomalies?.length || 0), 0)
+  }), [documents]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[320px,1fr]">
       <Card title="Mes dossiers">
         <div className="space-y-3">
-          {suppliers.map((item, idx) => (
+          {suppliers.map((item) => (
             <button
-              key={idx}
-              onClick={() => setSelectedId(item.id)}
+              key={item.siret}
+              onClick={() => setSelectedId(item.siret)}
               className={`w-full rounded-2xl border p-4 text-left transition ${
-                selectedId === item.id
+                selectedId === item.siret
                   ? 'border-brand-500 bg-brand-500/10'
                   : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
               }`}
@@ -173,13 +153,9 @@ useEffect(() => {
               <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                 <div>
                   <p className="text-sm text-slate-400">Entreprise</p>
-                  <p className="text-lg font-semibold text-white">
-                    {userData.supplierName}
-                  </p>
+                  <p className="text-lg font-semibold text-white">{userData.supplierName}</p>
                 </div>
-                <Badge status={userData.globalStatus}>
-                  {userData.globalStatus}
-                </Badge>
+                <Badge status={userData.globalStatus}>{userData.globalStatus}</Badge>
               </div>
 
               <div className="grid gap-4 md:grid-cols-4">
@@ -206,9 +182,7 @@ useEffect(() => {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {userData.documentsReceived?.length ? (
                     userData.documentsReceived.map((item) => (
-                      <Badge key={item} status="validated">
-                        {item}
-                      </Badge>
+                      <Badge key={item} status="validated">{item}</Badge>
                     ))
                   ) : (
                     <p className="text-slate-400">Aucun document reçu.</p>
@@ -229,10 +203,7 @@ useEffect(() => {
           ) : documents.length ? (
             <div className="space-y-4">
               {documents.map((doc) => (
-                <div
-                  key={doc.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4"
-                >
+                <div key={doc.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-3">
@@ -240,20 +211,16 @@ useEffect(() => {
                           <FileText size={18} />
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-white">
-                            {doc.filename}
-                          </p>
+                          <p className="truncate font-medium text-white">{doc.filename}</p>
                           <p className="truncate text-sm text-slate-400">
-                            {doc.documentType || 'document_inconnu'} • {doc.step || 'pending'}
+                            {doc.metadata?.documentType || 'document_inconnu'} • {doc.metadata?.step || 'pending'}
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      <Badge status={getDocStatus(doc)}>
-                        {getDocStatus(doc)}
-                      </Badge>
+                      <Badge status={getDocStatus(doc)}>{getDocStatus(doc)}</Badge>
                       <Link
                         to={`/documents/${doc.id}`}
                         className="inline-flex items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-600 hover:text-white"
@@ -266,37 +233,23 @@ useEffect(() => {
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                        Type
-                      </p>
-                      <p className="mt-1 text-sm text-slate-300">
-                        {doc.documentType || 'Non détecté'}
-                      </p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Type</p>
+                      <p className="mt-1 text-sm text-slate-300">{doc.metadata?.documentType || 'Non détecté'}</p>
                     </div>
-
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                        Statut
-                      </p>
-                      <p className="mt-1 text-sm text-slate-300">
-                        {getDocStatus(doc)}
-                      </p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Statut</p>
+                      <p className="mt-1 text-sm text-slate-300">{getDocStatus(doc)}</p>
                     </div>
-
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                        Anomalies
-                      </p>
-                      <p className="mt-1 text-sm text-slate-300">
-                        {(doc.validation?.anomalies || []).length}
-                      </p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Anomalies</p>
+                      <p className="mt-1 text-sm text-slate-300">{(doc.metadata?.validation?.anomalies || []).length}</p>
                     </div>
                   </div>
 
                   <div className="mt-4">
-                    {(doc.validation?.anomalies || []).length ? (
+                    {(doc.metadata?.validation?.anomalies || []).length ? (
                       <div className="space-y-2">
-                        {doc.validation.anomalies.map((item, index) => (
+                        {doc.metadata.validation.anomalies.map((item, index) => (
                           <div
                             key={`${doc.id}-${index}`}
                             className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-200"
@@ -326,19 +279,12 @@ useEffect(() => {
             <div className="space-y-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-base font-semibold text-white">
-                    Checklist conformité
-                  </p>
+                  <p className="text-base font-semibold text-white">Checklist conformité</p>
                   <p className="mt-1 text-sm text-slate-400">
                     Résultat détaillé des contrôles réglementaires et documentaires.
                   </p>
                 </div>
-
-                <span
-                  className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${globalChecklistClass(
-                    checklistStatus
-                  )}`}
-                >
+                <span className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${globalChecklistClass(checklistStatus)}`}>
                   {checklistStatus === 'ok'
                     ? 'Validation complète'
                     : checklistStatus === 'partial'
@@ -350,7 +296,6 @@ useEffect(() => {
               <div className="grid gap-4 md:grid-cols-2">
                 {userData.checks.map((check, index) => {
                   const status = normalizeStatus(check.status);
-
                   return (
                     <div
                       key={`${check.name}-${index}`}
@@ -359,19 +304,8 @@ useEffect(() => {
                       <p className="pr-4 text-sm font-medium text-white">
                         {displayCheckName(check.name)}
                       </p>
-
-                      <span
-                        className={`inline-flex min-w-[72px] items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${statusPillClass(
-                          status
-                        )}`}
-                      >
-                        {status === 'ok'
-                          ? 'OK'
-                          : status === 'failed'
-                          ? 'Échec'
-                          : status === 'warning'
-                          ? 'Warning'
-                          : 'En attente'}
+                      <span className={`inline-flex min-w-[72px] items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${statusPillClass(status)}`}>
+                        {status === 'ok' ? 'OK' : status === 'failed' ? 'Échec' : status === 'warning' ? 'Warning' : 'En attente'}
                       </span>
                     </div>
                   );
@@ -389,10 +323,7 @@ useEffect(() => {
           {userData?.anomalies?.length ? (
             <ul className="space-y-3 text-slate-300">
               {userData.anomalies.map((item) => (
-                <li
-                  key={item}
-                  className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-200"
-                >
+                <li key={item} className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-200">
                   {item}
                 </li>
               ))}

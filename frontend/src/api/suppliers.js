@@ -8,6 +8,7 @@ export async function fetchSuppliers() {
 
 export async function fetchCrmSupplier(id) {
   const { data } = await api.get(`/crm/suppliers/${id}`);
+  console.log("CRM Supplier details fetched:", data);
   return data;
 }
 

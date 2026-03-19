@@ -190,7 +190,7 @@ export async function getAllSuppliers() {
           siret: data.siret,
           vat: data.vat,
           iban: data.iban,
-          address: data.address
+          address: data.address || data.adresseEmetteur
         });
       }
     }
@@ -222,7 +222,7 @@ export async function getSupplierById(siret) {
       siret: data.siret,
       vat: data.vat,
       iban: data.iban,
-      address: data.address
+      address: data.address || data.adresseEmetteur
     };
 
   } finally {
