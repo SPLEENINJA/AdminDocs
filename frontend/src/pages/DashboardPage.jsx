@@ -10,7 +10,8 @@ export default function DashboardPage() {
   const [documents, setDocuments] = useState([]);
 
   useEffect(() => {
-    fetchDocuments().then(setDocuments).catch(console.error);
+    const token = localStorage.getItem('token');
+    fetchDocuments(token).then(setDocuments).catch(console.error);
   }, []);
 
   const total = documents.length;

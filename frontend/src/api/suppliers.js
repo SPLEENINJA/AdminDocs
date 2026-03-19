@@ -2,11 +2,13 @@ import api from './client';
 
 export async function fetchSuppliers() {
   const { data } = await api.get('/suppliers');
+  console.log("Suppliers fetched:", data);
   return data;
 }
 
 export async function fetchCrmSupplier(id) {
   const { data } = await api.get(`/crm/suppliers/${id}`);
+  console.log("CRM Supplier details fetched:", data);
   return data;
 }
 

@@ -1,0 +1,34 @@
+{
+  "document_id": "ocr_upload_4ovfm091_20260318_084027_24b3c7c0",
+  "fichier_source": "modele-facture-tva-vert.png",
+  "sha256": "6116b2d56afdfb09bc140f7923a30fa73ea6c0b9045e73a27a4d496f8bb6eb76",
+  "nb_pages": 1,
+  "chemin_raw": "/app/storage/raw/2026/03/18/ocr_upload_4ovfm091_20260318_084027_24b3c7c0.png",
+  "type_document": "facture",
+  "confiance": 0.9,
+  "champs": {
+    "siret": null,
+    "siren": null,
+    "raison_sociale": "Nom de l'entreprise",
+    "date_emission": null,
+    "date_expiration": null,
+    "montant_ht": null,
+    "montant_ttc": null,
+    "tva_taux": null,
+    "numero_document": null,
+    "iban": null,
+    "bic": null,
+    "emetteur": "{'raison_sociale': \"Nom de l'entreprise\", 'adresse': 'Adresse\\nVille et Code Postal', 'telephone': 'Numéro de téléphone', 'email': 'Email'}",
+    "destinataire": "{'raison_sociale': 'Nom du client', 'adresse': 'Adresse', 'telephone': 'Numéro de téléphone', 'email': 'Email'}"
+  },
+  "qualite_scan": "bonne",
+  "anomalies": [
+    "La date d'émission est manquante.",
+    "Le numéro de facture est manquant.",
+    "Le montant HT est manquant.",
+    "Le montant TTC est manquant.",
+    "Le taux de TVA est manquant.",
+    "Le SIRET de l'entreprise émettrice est manquant."
+  ],
+  "validation_errors": []
+}

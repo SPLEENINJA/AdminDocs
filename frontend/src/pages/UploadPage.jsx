@@ -20,7 +20,9 @@ export default function UploadPage() {
     setError('');
 
     try {
-      const response = await uploadDocuments(selectedFiles);
+      const token = localStorage.getItem('token');
+      console.log('Token for upload:', token);
+      const response = await uploadDocuments(selectedFiles, token);
       setUploadedDocs(response.documents || []);
       setSelectedFiles([]);
     } catch (err) {

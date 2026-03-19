@@ -1,0 +1,30 @@
+{
+  "document_id": "ocr_upload_wubr24gm_20260318_084938_a0a44833",
+  "fichier_source": "Invoice-9572AFC9-0015.pdf",
+  "sha256": "e71c9060c6ec45f8153b8203560d3301a58b727cbeb4bb0179552f97a89428a9",
+  "nb_pages": 1,
+  "chemin_raw": "/app/storage/raw/2026/03/18/ocr_upload_wubr24gm_20260318_084938_a0a44833.pdf",
+  "type_document": "facture",
+  "confiance": 0.9,
+  "champs": {
+    "siret": null,
+    "siren": null,
+    "raison_sociale": "FACEIT",
+    "date_emission": "2026-02-18",
+    "date_expiration": "2026-02-18",
+    "montant_ht": 9.99,
+    "montant_ttc": 11.99,
+    "tva_taux": "0.2",
+    "numero_document": "9572AFC9-0015",
+    "iban": null,
+    "bic": null,
+    "emetteur": "FACEIT",
+    "destinataire": "capeljules@gmail.com"
+  },
+  "qualite_scan": "bonne",
+  "anomalies": [],
+  "validation_errors": [
+    "Document expiré : date_expiration '2026-02-18' est dans le passé",
+    "TVA incohérente : HT=9.99, TVA=0.2 → TTC attendu≈10.01, reçu=11.99"
+  ]
+}

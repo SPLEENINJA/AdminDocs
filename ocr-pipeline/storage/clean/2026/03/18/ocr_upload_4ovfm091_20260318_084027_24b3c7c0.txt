@@ -1,0 +1,1 @@
+Facture N°. Informations de l'entreprise et du client. Détail des prestations avec prix unitaire HT, unité, quantité et montant HT. Modalités et conditions de règlement, date d'échéance. Totaux HT, TVA et TTC. Signature.

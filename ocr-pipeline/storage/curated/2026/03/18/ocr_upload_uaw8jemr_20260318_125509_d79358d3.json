@@ -1,0 +1,29 @@
+{
+  "document_id": "ocr_upload_uaw8jemr_20260318_125509_d79358d3",
+  "fichier_source": "facture_FC2025095271INT20260101.pdf",
+  "sha256": "4d429c479bc5b004c3ac56e87de2d6a6f17abb8d1e4b0411a937f50fc2fbc003",
+  "nb_pages": 1,
+  "chemin_raw": "/app/storage/raw/2026/03/18/ocr_upload_uaw8jemr_20260318_125509_d79358d3.pdf",
+  "type_document": "facture",
+  "confiance": 0.9,
+  "champs": {
+    "siret": "97797094600017",
+    "siren": "977970946",
+    "raison_sociale": "SPEEDWAY",
+    "date_emission": "2025-12-31",
+    "date_expiration": null,
+    "montant_ht": 131.74,
+    "montant_ttc": 158.09,
+    "tva_taux": "0.2",
+    "numero_document": "FC/2025/095271/INT",
+    "iban": null,
+    "bic": null,
+    "emetteur": "SPEEDWAY",
+    "destinataire": "etreve fabien"
+  },
+  "qualite_scan": "bonne",
+  "anomalies": [],
+  "validation_errors": [
+    "TVA incohérente : HT=131.74, TVA=0.2 → TTC attendu≈132.0, reçu=158.09"
+  ]
+}

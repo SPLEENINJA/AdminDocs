@@ -25,8 +25,21 @@ export async function initDatabase() {
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        
       )
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        mimetype VARCHAR(255) NOT NULL,
+        size INTEGER NOT NULL,
+        filename VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        path VARCHAR(255) NOT NULL,
+        ocr_text TEXT,
+        metadata JSONB
+      )`)
     console.log('Table users créée ou déjà existante');
   } catch (error) {
     console.error('Erreur lors de l\'initialisation de la base de données:', error);

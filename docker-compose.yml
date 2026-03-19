@@ -1,16 +1,6 @@
 ﻿# =============================================================================
-# Hackathon 2026 â€“ Docker Compose
-# IntÃ©gration complÃ¨te avec le code du groupe (AdminDocs)
-#
-# Services :
-#   - team-backend     : Backend Express (port 4000)
-#   - ocr-service      : Pipeline OCR FastAPI + Gemini (port 8000)
-#   - airflow-*        : Orchestration Airflow 3.1.2 CeleryExecutor (port 8081)
-#   - redis            : Broker Celery
-#   - minio            : Data Lake S3 (API 9000 / Console 8900)
-#   - postgres         : BDD Airflow (port 5432)
-#   - anomaly-service  : Anomaly Detector v2 (port 8002)
-#   - business-service : Mock CRM + ConformitÃ© (port 8003)
+# Hackathon 2026 – Docker Compose
+# Réseau unique (default bridge) — tous les services se voient par nom
 # =============================================================================
 
 x-airflow-common: &airflow-common
@@ -33,14 +23,12 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
     AIRFLOW__API_AUTH__JWT_SECRET: "hackathon2026-jwt-secret-key-fixed"
     _PIP_ADDITIONAL_REQUIREMENTS: "requests minio boto3"
-    # MinIO
     MINIO_ENDPOINT: minio:9000
     MINIO_ACCESS_KEY: minio_user
     MINIO_SECRET_KEY: minio_password
     MINIO_BUCKET_RAW: raw
     MINIO_BUCKET_CLEAN: clean
     MINIO_BUCKET_CURATED: curated
-    # Services du groupe
     OCR_SERVICE_URL: http://ocr-service:8000
     ANOMALY_SERVICE_URL: http://anomaly-service:8002
     BUSINESS_SERVICE_URL: http://business-service:8003
@@ -58,10 +46,12 @@ x-airflow-common: &airflow-common
       condition: service_healthy
 
 services:
+
   # ========================== FRONTEND REACT ==========================
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     depends_on:
@@ -73,11 +63,15 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+
 
   # ========================== BACKEND EXPRESS ==========================
   team-backend:
     build:
       context: ./team_backend
+      dockerfile: Dockerfile
     ports:
       - "4000:4000"
     environment:
@@ -96,6 +90,7 @@ services:
     volumes:
       - backend_uploads:/app/src/uploads
       - backend_data:/app/src/data
+      - ./team_backend/backend/src:/app/src
     depends_on:
       minio:
         condition: service_healthy
@@ -292,7 +287,8 @@ services:
         mc mb --ignore-existing myminio/raw &&
         mc mb --ignore-existing myminio/clean &&
         mc mb --ignore-existing myminio/curated &&
-        echo "=== Buckets crÃ©Ã©s : raw, clean, curated ==="
+        mc anonymous set download myminio/raw &&
+        echo "=== Buckets créés, raw en accès public ==="
     restart: "no"
 
   # ========================== ANOMALY SERVICE ==========================
@@ -321,6 +317,134 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # ========================== OPENMETADATA ==========================
+  openmetadata-mysql:
+    image: docker.getcollate.io/openmetadata/db:1.6.0
+    container_name: openmetadata-mysql
+    command: "--sort_buffer_size=10M"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    volumes:
+      - openmetadata-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  openmetadata-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.3
+    container_name: openmetadata-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false
+    volumes:
+      - openmetadata-es:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?pretty | grep -qE 'green|yellow'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  openmetadata-migrate:
+    image: docker.getcollate.io/openmetadata/server:1.6.0
+    container_name: openmetadata-migrate
+    command: "./bootstrap/openmetadata-ops.sh migrate"
+    environment:
+      DB_DRIVER_CLASS: com.mysql.cj.jdbc.Driver
+      DB_SCHEME: mysql
+      DB_PARAMS: allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: openmetadata_password
+      OM_DATABASE: openmetadata_db
+      DB_HOST: openmetadata-mysql
+      DB_PORT: 3306
+      ELASTICSEARCH_HOST: openmetadata-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      AUTHENTICATION_PROVIDER: basic
+      SERVER_HOST_API_URL: http://openmetadata-server:8585/api
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://openmetadata-ingestion:8080
+      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
+      MIGRATION_LIMIT_PARAM: 1200
+    depends_on:
+      openmetadata-mysql:
+        condition: service_healthy
+      openmetadata-elasticsearch:
+        condition: service_healthy
+    restart: "no"
+
+  openmetadata-server:
+    image: docker.getcollate.io/openmetadata/server:1.6.0
+    container_name: openmetadata-server
+    environment:
+      DB_DRIVER_CLASS: com.mysql.cj.jdbc.Driver
+      DB_SCHEME: mysql
+      DB_PARAMS: allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: openmetadata_password
+      OM_DATABASE: openmetadata_db
+      DB_HOST: openmetadata-mysql
+      DB_PORT: 3306
+      ELASTICSEARCH_HOST: openmetadata-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      AUTHENTICATION_PROVIDER: basic
+      SERVER_HOST_API_URL: http://openmetadata-server:8585/api
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://openmetadata-ingestion:8080
+      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
+      AIRFLOW_DB: airflow
+    ports:
+      - "8585:8585"
+      - "8586:8586"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8586/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    depends_on:
+      openmetadata-mysql:
+        condition: service_healthy
+      openmetadata-elasticsearch:
+        condition: service_healthy
+      openmetadata-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  openmetadata-ingestion:
+    image: docker.getcollate.io/openmetadata/ingestion:1.6.0
+    container_name: openmetadata-ingestion
+    entrypoint: /bin/bash
+    command:
+      - "/opt/airflow/ingestion_dependency.sh"
+    environment:
+      # On utilise postgres-docs (container_name du service postgres) comme hostname
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-docs:5432/airflow_ingestion
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+      AIRFLOW__OPENMETADATA_AIRFLOW_APIS__DAG_GENERATED_CONFIGS: "/opt/airflow/dag_generated_configs"
+      OPENMETADATA_SERVER_URL: http://openmetadata-server:8585/api
+      DB_HOST: postgres-docs
+      DB_PORT: 5432
+      AIRFLOW_DB: airflow_ingestion
+      DB_SCHEME: postgresql+psycopg2
+      DB_USER: airflow
+      DB_PASSWORD: airflow
+    ports:
+      - "8083:8080"
+    volumes:
+      - ingestion-volume-dag-airflow:/opt/airflow/dag_generated_configs
+      - ingestion-volume-dags:/opt/airflow/dags
+      - ingestion-volume-tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   minio_data:
@@ -329,4 +453,8 @@ volumes:
   ocr_storage:
   ocr_logs:
   airflow_home:
-
+  openmetadata-mysql:
+  openmetadata-es:
+  ingestion-volume-dag-airflow:
+  ingestion-volume-dags:
+  ingestion-volume-tmp:

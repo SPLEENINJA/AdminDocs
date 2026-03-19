@@ -1,7 +1,8 @@
 import { getAllDocuments, getDocumentById } from '../services/documentService.js';
 
 export async function listDocuments(_req, res) {
-  const documents = await getAllDocuments();
+  const user_id = _req.user.id; // Assuming user ID is available in the request object
+  const documents = await getAllDocuments(user_id);
   res.json(documents);
 }
 
@@ -26,3 +27,5 @@ export async function getDocumentStatus(req, res) {
     validationStatus: document.validation?.status || null
   });
 }
+
+
