@@ -1,18 +1,14 @@
-﻿import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { UploadCloud } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
-import { uploadDocuments, fetchDocuments } from '../api/documents';
+import { uploadDocuments } from '../api/documents';
 
 export default function UploadPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchDocuments().then(setUploadedDocs).catch(console.error);
-  }, []);
 
   function onSelectFiles(event) {
     setSelectedFiles(Array.from(event.target.files || []));
@@ -25,10 +21,10 @@ export default function UploadPage() {
 
     try {
       const response = await uploadDocuments(selectedFiles);
-      setUploadedDocs((prev) => [...(response.documents || []), ...prev]);
+      setUploadedDocs(response.documents || []);
       setSelectedFiles([]);
     } catch (err) {
-      setError(err.response?.data?.message || "Erreur pendant l'upload");
+      setError(err.response?.data?.message || 'Erreur pendant l’upload');
     } finally {
       setLoading(false);
     }
@@ -41,9 +37,9 @@ export default function UploadPage() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-500/15 text-brand-500">
             <UploadCloud size={28} />
           </div>
-          <h2 className="mt-4 text-2xl font-semibold text-white">Depose tes PDF et images</h2>
+          <h2 className="mt-4 text-2xl font-semibold text-white">Dépose tes PDF et images</h2>
           <p className="mx-auto mt-2 max-w-2xl text-slate-400">
-            Formats acceptes : PDF, PNG, JPG, WEBP. Le backend stocke les fichiers puis declenche automatiquement le pipeline de traitement.
+            Formats acceptés : PDF, PNG, JPG, WEBP. Le backend stocke les fichiers puis déclenche automatiquement le pipeline de traitement.
           </p>
 
           <input
@@ -66,7 +62,7 @@ export default function UploadPage() {
         </div>
       </Card>
 
-      <Card title="Fichiers selectionnes">
+      <Card title="Fichiers sélectionnés">
         <div className="space-y-3">
           {selectedFiles.map((file) => (
             <div key={file.name} className="flex items-center justify-between rounded-2xl border border-slate-800 p-4">
@@ -74,14 +70,14 @@ export default function UploadPage() {
                 <p className="font-medium text-white">{file.name}</p>
                 <p className="text-sm text-slate-400">{(file.size / 1024).toFixed(1)} KB</p>
               </div>
-              <Badge status="pending">pret</Badge>
+              <Badge status="pending">prêt</Badge>
             </div>
           ))}
-          {!selectedFiles.length && <p className="text-slate-400">Aucun fichier selectionne.</p>}
+          {!selectedFiles.length && <p className="text-slate-400">Aucun fichier sélectionné.</p>}
         </div>
       </Card>
 
-      <Card title="Documents traites">
+      <Card title="Réponse API après upload">
         <div className="space-y-3">
           {uploadedDocs.map((doc) => (
             <div key={doc.id} className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
@@ -92,7 +88,7 @@ export default function UploadPage() {
               <Badge status={doc.status}>{doc.status}</Badge>
             </div>
           ))}
-          {!uploadedDocs.length && <p className="text-slate-400">Aucun document pour l instant.</p>}
+          {!uploadedDocs.length && <p className="text-slate-400">L’API retournera ici les documents créés.</p>}
         </div>
       </Card>
     </div>

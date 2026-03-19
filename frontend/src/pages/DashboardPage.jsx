@@ -6,6 +6,7 @@ import Badge from '../components/ui/Badge';
 import { fetchDocuments } from '../api/documents';
 
 export default function DashboardPage() {
+
   const [documents, setDocuments] = useState([]);
 
   useEffect(() => {

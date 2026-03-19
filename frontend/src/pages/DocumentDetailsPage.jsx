@@ -47,29 +47,12 @@ export default function DocumentDetailsPage() {
 
         <Card title="Champs extraits">
           <div className="space-y-3">
-            {Object.entries(document.extractedData || {}).filter(([key]) => key !== 'status' && key !== 'montantAcompte').map(([key, value]) => {
-              const labels = {
-                supplierName: 'Fournisseur',
-                siret: 'SIRET',
-                vat: 'N° TVA',
-                vatRate: 'Taux de TVA',
-                invoiceDate: "Date d'émission",
-                expiryDate: "Date d'expiration",
-                amountHt: 'Montant HT',
-                amountTtc: 'Montant TTC',
-                iban: 'IBAN',
-                bic: 'BIC',
-                adresseEmetteur: 'Adresse émetteur',
-                adresseDestinataire: 'Adresse destinataire',
-                invoiceNumber: 'N° document',
-              };
-              return (
-                <div key={key} className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-                  <span className="text-slate-400">{labels[key] || key}</span>
-                  <span className="font-medium text-white">{value === null || value === undefined ? '—' : String(value)}</span>
-                </div>
-              );
-            })}
+            {Object.entries(document.extractedData || {}).map(([key, value]) => (
+              <div key={key} className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+                <span className="text-slate-400">{key}</span>
+                <span className="font-medium text-white">{String(value)}</span>
+              </div>
+            ))}
             {!document.extractedData && <p className="text-slate-400">Aucune donnée extraite pour l’instant.</p>}
           </div>
         </Card>
@@ -110,8 +93,8 @@ export default function DocumentDetailsPage() {
                 <Link className="rounded-2xl bg-brand-500 px-5 py-3 font-medium text-white" to={`/crm?selected=${document.supplierId}`}>
                   Ouvrir dans le CRM
                 </Link>
-                <Link className="rounded-2xl border border-slate-700 px-5 py-3 font-medium text-slate-200" to={`/compliance?selected=${document.supplierId}`}>
-                  Ouvrir dans la conformité
+                <Link className="rounded-2xl border border-slate-700 px-5 py-3 font-medium text-slate-200" to={document.supplierId ? `/user?supplierId=${document.supplierId}` : '/user'}>
+                  Ouvrir dans l’espace utilisateur
                 </Link>
               </div>
             ) : (

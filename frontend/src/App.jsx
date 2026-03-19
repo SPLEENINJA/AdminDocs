@@ -5,7 +5,7 @@ import UploadPage from './pages/UploadPage';
 import DocumentsPage from './pages/DocumentsPage';
 import DocumentDetailsPage from './pages/DocumentDetailsPage';
 import CRMPage from './pages/CRMPage';
-import CompliancePage from './pages/CompliancePage';
+import UserPage from "./pages/UserPage";
 
 export default function App() {
   return (
@@ -16,7 +16,7 @@ export default function App() {
         <Route path="/documents" element={<DocumentsPage />} />  //liste des documents
         <Route path="/documents/:id" element={<DocumentDetailsPage />} />  //détail d’un document
         <Route path="/crm" element={<CRMPage />} />   //CRM fournisseur
-        <Route path="/compliance" element={<CompliancePage />} />  //conformité réglementaire
+        <Route path="/user" element={<UserPage />} />
       </Routes>
     </AppShell>
   );
