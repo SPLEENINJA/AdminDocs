@@ -7,6 +7,7 @@ import crmRoutes from './routes/crmRoutes.js';
 import complianceRoutes from './routes/complianceRoutes.js';
 import supplierRoutes from './routes/supplierRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { authenticateToken } from './middleware/auth.js';
 
@@ -27,6 +28,8 @@ app.use('/api/documents', authenticateToken, documentRoutes);
 app.use('/api/crm', authenticateToken, crmRoutes);
 app.use('/api/compliance', authenticateToken, complianceRoutes);
 app.use('/api/suppliers', authenticateToken, supplierRoutes);
+
+app.use('/api/chat', authenticateToken, chatRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
