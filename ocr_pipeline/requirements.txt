@@ -1,6 +1,6 @@
 # ── OCR & Vision ──────────────────────────────────────────────────────────────
 google-genai>=0.8.0         # nouveau SDK (remplace google-generativeai)
-pymupdf>=1.23.0             # lecture PDF pur Python — PAS besoin de poppler ✅
+pymupdf>=1.23.0             # lecture PDF pur Python — PAS besoin de poppler
 img2pdf>=0.4.4              # génération PDF depuis images (pip install img2pdf)
 Pillow>=10.0.0
 # pdf2image>=1.17.0         # optionnel — fallback si pymupdf absent (nécessite poppler)

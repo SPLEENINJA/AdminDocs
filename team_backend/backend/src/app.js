@@ -6,7 +6,9 @@ import documentRoutes from './routes/documentRoutes.js';
 import crmRoutes from './routes/crmRoutes.js';
 import complianceRoutes from './routes/complianceRoutes.js';
 import supplierRoutes from './routes/supplierRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
+import { authenticateToken } from './middleware/auth.js';
 
 const app = express();
 const __dirname = path.resolve();
@@ -19,11 +21,12 @@ app.get('/api/health', (_req, res) => {
   res.json({ success: true, message: 'AdminDocs API is healthy' });
 });
 
-app.use('/api/upload', uploadRoutes);
-app.use('/api/documents', documentRoutes);
-app.use('/api/crm', crmRoutes);
-app.use('/api/compliance', complianceRoutes);
-app.use('/api/suppliers', supplierRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/upload', authenticateToken, uploadRoutes);
+app.use('/api/documents', authenticateToken, documentRoutes);
+app.use('/api/crm', authenticateToken, crmRoutes);
+app.use('/api/compliance', authenticateToken, complianceRoutes);
+app.use('/api/suppliers', authenticateToken, supplierRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

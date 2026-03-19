@@ -5,9 +5,11 @@ import {
   Upload,
   UserCircle2,
   Sparkles,
-  BellRing
+  BellRing,
+  LogOut
 } from 'lucide-react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -32,6 +34,14 @@ export default function AppShell({
   subtitle = '',
   actions = null
 }) {
+  const navigate = useNavigate();
+  const { logout, user } = useAuth();
+
+  function handleLogout() {
+    logout();
+    navigate('/login');
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Sidebar gauche */}
@@ -56,7 +66,7 @@ export default function AppShell({
           </p>
         </Link>
 
-        <nav className="mt-8 space-y-2">
+        <nav className="mt-8 space-y-2 flex-1">
           {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
@@ -68,6 +78,20 @@ export default function AppShell({
             </NavLink>
           ))}
         </nav>
+
+        <div className="mt-auto pt-6 border-t border-slate-800">
+          <div className="mb-3 rounded-2xl bg-slate-900/60 px-4 py-3">
+            <p className="text-xs text-slate-500">Connecté en tant que</p>
+            <p className="mt-1 font-medium text-white">{user?.username || 'Utilisateur'}</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-300 transition-all duration-200 hover:bg-slate-900 hover:text-white"
+          >
+            <LogOut size={18} />
+            <span>Déconnexion</span>
+          </button>
+        </div>
       </aside>
 
       {/* Contenu principal */}
