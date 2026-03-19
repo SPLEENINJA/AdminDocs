@@ -367,9 +367,9 @@ services:
       ELASTICSEARCH_SCHEME: http
       AUTHENTICATION_PROVIDER: basic
       SERVER_HOST_API_URL: http://openmetadata-server:8585/api
-      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://airflow-apiserver:8080
-      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
-      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://openmetadata-ingestion:8080
+      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
       MIGRATION_LIMIT_PARAM: 1200
     depends_on:
       openmetadata-mysql:
@@ -395,9 +395,10 @@ services:
       ELASTICSEARCH_SCHEME: http
       AUTHENTICATION_PROVIDER: basic
       SERVER_HOST_API_URL: http://openmetadata-server:8585/api
-      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://airflow-apiserver:8080
-      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
-      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: http://openmetadata-ingestion:8080
+      AIRFLOW_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      AIRFLOW_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
+      AIRFLOW_DB: airflow
     ports:
       - "8585:8585"
       - "8586:8586"
@@ -424,7 +425,7 @@ services:
       - "/opt/airflow/ingestion_dependency.sh"
     environment:
       # On utilise postgres-docs (container_name du service postgres) comme hostname
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-docs:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-docs:5432/airflow_ingestion
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
       AIRFLOW__OPENMETADATA_AIRFLOW_APIS__DAG_GENERATED_CONFIGS: "/opt/airflow/dag_generated_configs"
@@ -441,6 +442,7 @@ services:
       - ingestion-volume-dag-airflow:/opt/airflow/dag_generated_configs
       - ingestion-volume-dags:/opt/airflow/dags
       - ingestion-volume-tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
 volumes:
