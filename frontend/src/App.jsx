@@ -10,6 +10,7 @@ import CRMPage from './pages/CRMPage';
 import UserPage from './pages/UserPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ChatPage from './pages/ChatPage';
 
 export default function App() {
   return (
@@ -62,6 +63,14 @@ export default function App() {
           <PrivateRoute>
             <AppShell>
               <UserPage />
+            </AppShell>
+          </PrivateRoute>
+        } />
+        
+        <Route path="/chat" element={
+          <PrivateRoute>
+            <AppShell title="Chat IA" subtitle="Interrogez vos documents en langage naturel">
+              <ChatPage />
             </AppShell>
           </PrivateRoute>
         } />
