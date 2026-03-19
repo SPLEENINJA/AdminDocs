@@ -6,7 +6,8 @@ import {
   UserCircle2,
   Sparkles,
   BellRing,
-  LogOut
+  LogOut,
+  MessageSquare
 } from 'lucide-react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,7 +17,8 @@ const navItems = [
   { to: '/upload', label: 'Upload', icon: Upload },
   { to: '/documents', label: 'Documents', icon: FileText },
   { to: '/crm', label: 'CRM', icon: FolderKanban },
-  { to: '/user', label: 'User', icon: UserCircle2 }
+  { to: '/user', label: 'User', icon: UserCircle2 },
+  { to: '/chat', label: 'Chat IA', icon: MessageSquare }
 ];
 
 function getNavLinkClass(isActive) {
