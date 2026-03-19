@@ -10,13 +10,12 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Installer les dépendances
-COPY package.json package-lock.json ./
-RUN npm ci --silent
-
-# Copier les sources et builder
 COPY . .
-# VITE_API_URL vide → axios utilisera /api (relatif, géré par nginx)
+
+# Installer les dépendances
+RUN npm install
+
+# Builder
 ENV VITE_API_URL=/api
 RUN npm run build
 
